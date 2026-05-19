@@ -56,7 +56,24 @@ const commonHeaders = (cookies) => ({
 })
 
 async function fetchProduccion(cookies) {
-  const res = await fetch(PROD_URL, { headers: commonHeaders(cookies) })
+  // The page requires POST with date range — GET only returns the empty form.
+  // We use a wide range to capture all historical socios.
+  const body = new URLSearchParams({
+    fechainicio: '2020-01-01',
+    fechafin:    '2030-12-31',
+    filtrofecha: '0',
+    estadobo:    '0',
+    SI_A:        'Si. Esta es la consulta que quiero hacer.'
+  })
+
+  const res = await fetch(PROD_URL, {
+    method: 'POST',
+    headers: {
+      ...commonHeaders(cookies),
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: body.toString()
+  })
   const html = await res.text()
 
   if (html.includes('login.php') && !html.includes('Formulario')) {
