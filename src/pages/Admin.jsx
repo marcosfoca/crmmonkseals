@@ -56,14 +56,21 @@ export default function Admin() {
 
   async function handleSave() {
     setSaving(true); setError('')
-    const body = { ...form }
-    if (!body.password && modal === 'edit') delete body.password
-    const res = modal === 'create'
-      ? await apiFetch('/api/users', { method: 'POST', body: JSON.stringify(body) })
-      : await apiFetch(`/api/users/${editId}`, { method: 'PUT', body: JSON.stringify(body) })
-    const data = await res?.json()
-    if (!res?.ok) { setError(data?.error || 'Error'); setSaving(false); return }
-    setModal(null); loadUsers(); setSaving(false)
+    try {
+      const body = { ...form }
+      if (!body.password && modal === 'edit') delete body.password
+      const res = modal === 'create'
+        ? await apiFetch('/api/users', { method: 'POST', body: JSON.stringify(body) })
+        : await apiFetch(`/api/users/${editId}`, { method: 'PUT', body: JSON.stringify(body) })
+      if (!res) { setSaving(false); return } // redirected to login
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(data?.error || `Error ${res.status}`); setSaving(false); return }
+      setModal(null); loadUsers()
+    } catch (err) {
+      setError('Error de red: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleDelete(id, nombre) {
