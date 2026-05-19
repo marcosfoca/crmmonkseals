@@ -3,8 +3,7 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/scanner", "destination": "/scanner/index.html" },
-    { "source": "/api/:path*", "destination": "/api/:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "functions": {
     "api/**/*.js": {
