@@ -90,7 +90,7 @@ export default async function handler(req, res) {
       ? Object.entries(edadFreq).sort((a,b) => b[1]-a[1])[0]?.[0]
       : null
 
-    // Edad tramos — ok/ko stacked
+    // Edad tramos — ok/ko + cuota media per tramo
     const tramosEdad = [
       ['18-25', 18, 25], ['26-35', 26, 35], ['36-45', 36, 45],
       ['46-55', 46, 55], ['56-65', 56, 65], ['66+', 66, 150]
@@ -104,7 +104,8 @@ export default async function handler(req, res) {
         if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age--
         return age >= min && age <= max
       })
-      return { tramo, ...countOkKo(arr) }
+      const cuotas = arr.map(s => Number(s.cuota)).filter(Boolean)
+      return { tramo, ...countOkKo(arr), cuota_media: avg(cuotas) }
     })
 
     // Cuota por estado (cuota media — useful for understanding ticket size)
