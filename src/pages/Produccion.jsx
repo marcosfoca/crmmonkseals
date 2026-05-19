@@ -174,23 +174,42 @@ export default function Produccion() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                {[
-                  ['ong',          'ONG'],
-                  ['nombre',       'Donante'],
-                  ['nif',          'DNI/NIF'],
-                  ['cuota',        'Cuota'],
-                  ['estado',       'Estado'],
-                  ['tipo_socio',   'Tipo'],
-                  ['fecha_alta',   'F. Alta'],
-                  ['fecha_okko',   'F. OK/KO'],
-                  ['llamada',      'Llamada'],
-                ].map(([col, label]) => (
-                  <th key={col}
-                    className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-800 whitespace-nowrap"
-                    onClick={() => toggleSort(col)}>
-                    <span className="flex items-center gap-1">{label}<SortIcon col={col}/></span>
-                  </th>
-                ))}
+                {/* ONG: sm+ */}
+                <th className="hidden sm:table-cell text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none whitespace-nowrap"
+                  onClick={() => toggleSort('ong')}>
+                  <span className="flex items-center gap-1">ONG<SortIcon col="ong"/></span>
+                </th>
+                {/* Donante: always */}
+                <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none whitespace-nowrap"
+                  onClick={() => toggleSort('nombre')}>
+                  <span className="flex items-center gap-1">Donante<SortIcon col="nombre"/></span>
+                </th>
+                {/* NIF: md+ */}
+                <th className="hidden md:table-cell text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">NIF</th>
+                {/* Cuota: always */}
+                <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none whitespace-nowrap"
+                  onClick={() => toggleSort('cuota')}>
+                  <span className="flex items-center gap-1">Cuota<SortIcon col="cuota"/></span>
+                </th>
+                {/* Estado: always */}
+                <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none whitespace-nowrap"
+                  onClick={() => toggleSort('estado')}>
+                  <span className="flex items-center gap-1">Estado<SortIcon col="estado"/></span>
+                </th>
+                {/* Tipo: md+ */}
+                <th className="hidden md:table-cell text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Tipo</th>
+                {/* F.Alta: sm+ */}
+                <th className="hidden sm:table-cell text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none whitespace-nowrap"
+                  onClick={() => toggleSort('fecha_alta')}>
+                  <span className="flex items-center gap-1">F. Alta<SortIcon col="fecha_alta"/></span>
+                </th>
+                {/* F.OKKO: md+ */}
+                <th className="hidden md:table-cell text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none whitespace-nowrap"
+                  onClick={() => toggleSort('fecha_okko')}>
+                  <span className="flex items-center gap-1">F. OK/KO<SortIcon col="fecha_okko"/></span>
+                </th>
+                {/* Llamada: sm+ */}
+                <th className="hidden sm:table-cell text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">✓</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -200,32 +219,30 @@ export default function Produccion() {
                 <tr><td colSpan={9} className="text-center py-12 text-gray-400">Sin resultados</td></tr>
               ) : socios.map(s => (
                 <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-3 py-2.5">
+                  <td className="hidden sm:table-cell px-3 py-2.5">
                     <span className={`badge ${s.ong === 'CRUZ_ROJA' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
-                      {s.ong === 'CRUZ_ROJA' ? 'CR' : 'PLAN'}
+                      {s.ong === 'CRUZ_ROJA' ? 'CR' : s.ong || '—'}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 font-medium text-gray-900 whitespace-nowrap">
-                    {[s.nombre, s.apellido1, s.apellido2].filter(Boolean).join(' ')}
-                    <div className="text-xs text-gray-400">{s.num_formulario}</div>
+                  <td className="px-3 py-2.5 font-medium text-gray-900">
+                    <div className="whitespace-nowrap">{[s.nombre, s.apellido1, s.apellido2].filter(Boolean).join(' ')}</div>
+                    <div className="text-xs text-gray-400 font-mono">{s.num_formulario}</div>
                   </td>
-                  <td className="px-3 py-2.5 text-gray-500 font-mono text-xs">{s.nif || '—'}</td>
-                  <td className="px-3 py-2.5 font-semibold text-gray-900">
+                  <td className="hidden md:table-cell px-3 py-2.5 text-gray-500 font-mono text-xs">{s.nif || '—'}</td>
+                  <td className="px-3 py-2.5 font-semibold text-gray-900 whitespace-nowrap">
                     {s.cuota ? `${s.cuota}€` : '—'}
-                    <div className="text-xs text-gray-400 font-normal">{s.periodicidad}</div>
+                    <div className="text-xs text-gray-400 font-normal hidden sm:block">{s.periodicidad}</div>
                   </td>
                   <td className="px-3 py-2.5">
                     <span className={`badge ${estadoBadge(s.estado?.trim())}`}>
                       {s.estado?.trim() || '—'}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 text-xs text-gray-500">{s.tipo_socio || '—'}</td>
-                  <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{fmt(s.fecha_alta)}</td>
-                  <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{fmt(s.fecha_okko)}</td>
-                  <td className="px-3 py-2.5 text-center">
-                    {s.llamada
-                      ? <span className="text-green-600 font-bold">✓</span>
-                      : <span className="text-gray-300">—</span>}
+                  <td className="hidden md:table-cell px-3 py-2.5 text-xs text-gray-500">{s.tipo_socio || '—'}</td>
+                  <td className="hidden sm:table-cell px-3 py-2.5 text-gray-500 whitespace-nowrap text-sm">{fmt(s.fecha_alta)}</td>
+                  <td className="hidden md:table-cell px-3 py-2.5 text-gray-500 whitespace-nowrap text-sm">{fmt(s.fecha_okko)}</td>
+                  <td className="hidden sm:table-cell px-3 py-2.5 text-center">
+                    {s.llamada ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-300">—</span>}
                   </td>
                 </tr>
               ))}

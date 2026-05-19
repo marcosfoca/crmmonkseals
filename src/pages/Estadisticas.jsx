@@ -5,8 +5,8 @@ import {
   ResponsiveContainer
 } from 'recharts'
 
-const OK_COLOR = '#094f82'  // brand-blue — OK (bottom)
-const KO_COLOR = '#cc0000'  // brand-red  — KO (top)
+const OK_COLOR = '#094f82'
+const KO_COLOR = '#cc0000'
 
 function Section({ title, children }) {
   return (
@@ -19,7 +19,7 @@ function Section({ title, children }) {
 
 function KPIRow({ items }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
       {items.map(({ label, value, sub }) => (
         <div key={label} className="bg-gray-50 rounded-xl p-3 text-center">
           <div className="text-xl font-bold text-brand-blue">{value ?? '—'}</div>
@@ -31,29 +31,25 @@ function KPIRow({ items }) {
   )
 }
 
-// Stacked bar: blue OK (bottom) + red KO (top). Shows volume AND quality together.
-function StackedBar({ data, xKey, height = 200 }) {
-  const hasData = data?.some(d => (d.ok || 0) + (d.ko || 0) > 0)
-  if (!hasData) {
-    return (
-      <div className="flex items-center justify-center text-gray-400 text-sm" style={{ height }}>
-        Sin datos suficientes
-      </div>
-    )
-  }
+// Stacked bar: blue OK (bottom) + red KO (top).
+// Always renders bars even when values are 0 so the chart is always visible.
+function StackedBar({ data, xKey, height = 190 }) {
+  if (!data?.length) return (
+    <div className="flex items-center justify-center text-gray-400 text-sm" style={{ height }}>Sin datos</div>
+  )
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+      <BarChart data={data} margin={{ top: 5, right: 8, left: -18, bottom: 5 }} barCategoryGap="40%">
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-        <XAxis dataKey={xKey} tick={{ fontSize: 11 }}/>
-        <YAxis tick={{ fontSize: 11 }} allowDecimals={false}/>
+        <XAxis dataKey={xKey} tick={{ fontSize: 10 }}/>
+        <YAxis tick={{ fontSize: 10 }} allowDecimals={false}/>
         <Tooltip
-          formatter={(value, name) => [value, name]}
-          labelFormatter={l => `${l}`}
+          formatter={(v, name) => [v, name]}
+          contentStyle={{ fontSize: 12, borderRadius: 8 }}
         />
-        <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }}/>
-        <Bar dataKey="ok" name="OK (Socio)" fill={OK_COLOR} stackId="a"/>
-        <Bar dataKey="ko" name="KO"         fill={KO_COLOR} stackId="a" radius={[4,4,0,0]}/>
+        <Legend iconSize={9} wrapperStyle={{ fontSize: 10 }}/>
+        <Bar dataKey="ok" name="OK (Socio)" fill={OK_COLOR} stackId="a" maxBarSize={40}/>
+        <Bar dataKey="ko" name="KO"         fill={KO_COLOR} stackId="a" radius={[4,4,0,0]} maxBarSize={40}/>
       </BarChart>
     </ResponsiveContainer>
   )
@@ -79,10 +75,10 @@ export default function Estadisticas() {
                : data.volumen_por_dia
 
   return (
-    <div className="flex flex-col gap-5">
-      <h1 className="text-xl font-bold text-gray-900">Estadísticas del equipo</h1>
+    <div className="flex flex-col gap-4">
+      <h1 className="text-xl font-bold text-gray-900">Estadísticas</h1>
 
-      {/* ── KPIs ── */}
+      {/* KPIs */}
       <Section title="Resumen general">
         <KPIRow items={[
           { label: 'Total socios',         value: data.total },
@@ -92,85 +88,72 @@ export default function Estadisticas() {
         ]}/>
       </Section>
 
-      {/* ── Volumen por tiempo ── */}
+      {/* Volumen */}
       <Section title="Volumen de ventas (socios con llamada ✓)">
-        <div className="flex gap-2">
-          {[['mes','Por meses'],['semana','Por semanas'],['dia','Por día semana']].map(([v,l]) => (
+        <div className="flex gap-1.5 flex-wrap">
+          {[['mes','Meses'],['semana','Semanas'],['dia','Día semana']].map(([v,l]) => (
             <button key={v} onClick={() => setVol(v)}
               className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
                 volumen === v ? 'bg-brand-blue text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}>{l}</button>
           ))}
         </div>
-        <ResponsiveContainer width="100%" height={240}>
-          <BarChart data={volData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+        <ResponsiveContainer width="100%" height={210}>
+          <BarChart data={volData} margin={{ top: 5, right: 8, left: -18, bottom: 5 }} barCategoryGap="40%">
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-            <XAxis dataKey="label" tick={{ fontSize: 11 }}/>
-            <YAxis tick={{ fontSize: 11 }} allowDecimals={false}/>
-            <Tooltip/>
-            <Bar dataKey="socios" name="Socios" fill={OK_COLOR} radius={[4,4,0,0]}/>
+            <XAxis dataKey="label" tick={{ fontSize: 10 }}/>
+            <YAxis tick={{ fontSize: 10 }} allowDecimals={false}/>
+            <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }}/>
+            <Bar dataKey="socios" name="Socios" fill={OK_COLOR} radius={[4,4,0,0]} maxBarSize={40}/>
           </BarChart>
         </ResponsiveContainer>
       </Section>
 
-      {/* ── Cuota por estado (ticket medio) ── */}
+      {/* Cuota media por estado */}
       <Section title="Cuota media por estado (€)">
-        <ResponsiveContainer width="100%" height={220}>
+        <ResponsiveContainer width="100%" height={200}>
           <BarChart data={data.cuota_por_estado} layout="vertical"
-            margin={{ top: 5, right: 20, left: 60, bottom: 5 }}>
+            margin={{ top: 5, right: 16, left: 4, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-            <XAxis type="number" tick={{ fontSize: 11 }}/>
-            <YAxis dataKey="estado" type="category" tick={{ fontSize: 10 }} width={90}/>
-            <Tooltip formatter={v => `${v}€`}/>
-            <Bar dataKey="cuota_media" name="Cuota media (€)" fill={OK_COLOR} radius={[0,4,4,0]}/>
+            <XAxis type="number" tick={{ fontSize: 10 }}/>
+            <YAxis dataKey="estado" type="category" tick={{ fontSize: 9 }} width={95}/>
+            <Tooltip formatter={v => `${v}€`} contentStyle={{ fontSize: 12, borderRadius: 8 }}/>
+            <Bar dataKey="cuota_media" name="Cuota media (€)" fill={OK_COLOR} radius={[0,4,4,0]} maxBarSize={20}/>
           </BarChart>
         </ResponsiveContainer>
       </Section>
 
-      {/* ── Calidad por perfil — stacked ok/ko ── */}
-      <Section title="Calidad de socio por perfil (azul = OK · rojo = KO)">
-        <p className="text-xs text-gray-400 -mt-1">
-          Cada barra muestra el total de socios del grupo dividido en OK (azul, abajo) y KO (rojo, arriba).
-          Compara volumen y calidad al mismo tiempo.
+      {/* Calidad por perfil */}
+      <Section title="Calidad por perfil  ·  azul = OK · rojo = KO">
+        <p className="text-xs text-gray-400 -mt-2">
+          Cada barra muestra el total del grupo dividido en OK abajo (azul) y KO arriba (rojo).
         </p>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
 
-          {/* Por tramo de aportación */}
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por tramo de aportación</h3>
             <StackedBar data={data.por_cuota_tramo} xKey="tramo"/>
           </div>
 
-          {/* Por sexo */}
-          <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por sexo</h3>
-            <StackedBar data={data.por_sexo} xKey="sexo"/>
-          </div>
-
-          {/* Por ONG */}
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por ONG</h3>
             <StackedBar data={data.por_ong} xKey="ong"/>
           </div>
 
-          {/* Por tipo documento */}
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por tipo de documento</h3>
             <StackedBar data={data.por_documento} xKey="tipo"/>
           </div>
 
-          {/* Por tramo de edad */}
-          <div className="md:col-span-2">
+          <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por tramo de edad</h3>
-            {data.edad_media
-              ? <p className="text-xs text-gray-500 mb-2">
-                  Media: <strong>{data.edad_media} años</strong>
-                  {data.edad_moda ? <> · Más común: <strong>{data.edad_moda} años</strong></> : null}
-                </p>
-              : <p className="text-xs text-gray-400 mb-2">Sin datos de edad — el campo fecha de nacimiento no se extrae del sync automático.</p>
-            }
-            <StackedBar data={data.edad_tramos} xKey="tramo" height={180}/>
+            {!data.edad_media && (
+              <p className="text-xs text-gray-400 mb-1">
+                La edad se calcula desde fecha de nacimiento del formulario. Sin datos aún.
+              </p>
+            )}
+            <StackedBar data={data.edad_tramos} xKey="tramo"/>
           </div>
 
         </div>

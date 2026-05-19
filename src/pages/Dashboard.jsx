@@ -79,7 +79,7 @@ export default function Dashboard() {
             {syncing ? 'Sincronizando...' : 'Sincronizar con topf2f'}
           </button>
           {syncMsg && (
-            <span className={`text-xs ${syncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+            <span className={`text-xs max-w-xs text-right break-words ${syncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
               {syncMsg}
             </span>
           )}
