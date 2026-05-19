@@ -93,11 +93,11 @@ function parseDate(str) {
   return null
 }
 
-// Columns (verified from live page):
-// 0:ONG 1:NºFormulario 2:Donante 3:Llamada 4:TipoSocio 5:PDF
-// 6:Teléfono 7:NºIntentos 8:Cuota 9:Periodicidad
-// 10:FFirma 11:FEntrega 12:FAlta 13:FOkKo 14:OtraFecha
-// 15:Estado 16:ComentCaptador 17:ComentCall
+// Data rows have 19 cells (verified from live page DOM inspection):
+// 0:(empty/checkbox) 1:ONG 2:NºFormulario 3:Donante 4:Llamada 5:TipoSocio 6:PDF
+// 7:Teléfono(extra,not in header) 8:NºIntentos 9:Cuota 10:Periodicidad
+// 11:FFirma 12:FEntrega 13:FAlta 14:FOkKo 15:OtraFecha
+// 16:Estado 17:ComentCaptador 18:ComentCall
 function parseProductionTable(html) {
   const $ = cheerio.load(html)
   const socios = []
@@ -114,29 +114,30 @@ function parseProductionTable(html) {
 
   rows.each((_, row) => {
     const cells = $(row).find('td')
-    if (cells.length < 16) return
+    if (cells.length < 17) return
 
-    const ong      = $(cells[0]).text().trim()
-    const numFormul = $(cells[1]).text().trim()
+    const ong      = $(cells[1]).text().trim()
+    const numFormul = $(cells[2]).text().trim()
 
     if (!numFormul || !numFormul.match(/^\d+-\d+$/)) return
     if (!ong || ong === 'ONG') return
 
-    const donante      = $(cells[2]).text().trim()
-    const llamada      = $(cells[3]).text().trim().toLowerCase() === 'si'
-    const tipoSocio    = $(cells[4]).text().trim()
-    const pdfContrato  = $(cells[5]).text().trim().toLowerCase() === 'si'
-    const intentos     = parseInt($(cells[7]).text().trim()) || 0
-    const cuota        = parseFloat($(cells[8]).text().trim().replace(',', '.')) || null
-    const periodicidad = $(cells[9]).text().trim()
-    const fFirma       = parseDate($(cells[10]).text().trim())
-    const fEntrega     = parseDate($(cells[11]).text().trim())
-    const fAlta        = parseDate($(cells[12]).text().trim())
-    const fOkKo        = parseDate($(cells[13]).text().trim())
-    const otraFCobro   = parseDate($(cells[14]).text().trim())
-    const estado       = $(cells[15]).text().trim()
-    const comentCapt   = cells[16] ? $(cells[16]).text().trim() : null
-    const comentCall   = cells[17] ? $(cells[17]).text().trim() : null
+    const donante      = $(cells[3]).text().trim()
+    const llamada      = $(cells[4]).text().trim().toLowerCase() === 'si'
+    const tipoSocio    = $(cells[5]).text().trim()
+    const pdfContrato  = $(cells[6]).text().trim().toLowerCase() === 'si'
+    // cells[7] = teléfono (not stored)
+    const intentos     = parseInt($(cells[8]).text().trim()) || 0
+    const cuota        = parseFloat($(cells[9]).text().trim().replace(',', '.')) || null
+    const periodicidad = $(cells[10]).text().trim()
+    const fFirma       = parseDate($(cells[11]).text().trim())
+    const fEntrega     = parseDate($(cells[12]).text().trim())
+    const fAlta        = parseDate($(cells[13]).text().trim())
+    const fOkKo        = parseDate($(cells[14]).text().trim())
+    const otraFCobro   = parseDate($(cells[15]).text().trim())
+    const estado       = $(cells[16]).text().trim()
+    const comentCapt   = cells[17] ? $(cells[17]).text().trim() : null
+    const comentCall   = cells[18] ? $(cells[18]).text().trim() : null
 
     const parts     = donante.trim().split(/\s+/)
     const nombre    = parts[0] || ''
