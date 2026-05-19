@@ -26,7 +26,7 @@ function avg(arr) {
 
 function countOkKo(arr) {
   const ok = arr.filter(s => s.estado?.trim() === 'SOCIO').length
-  return { ok, ko: arr.length - ok }
+  return { ok, ko: arr.length - ok, total: arr.length }
 }
 
 // starts with letter → NIE/Pasaporte, starts with digit → DNI

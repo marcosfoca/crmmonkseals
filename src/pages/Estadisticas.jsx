@@ -5,8 +5,9 @@ import {
   ResponsiveContainer
 } from 'recharts'
 
-const OK_COLOR = '#094f82'
-const KO_COLOR = '#cc0000'
+const OK_COLOR  = '#094f82'
+const KO_COLOR  = '#cc0000'
+const VOL_COLOR = '#0ea5e9'
 
 function Section({ title, children }) {
   return (
@@ -20,19 +21,46 @@ function Section({ title, children }) {
 function KPIRow({ items }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-      {items.map(({ label, value, sub }) => (
+      {items.map(({ label, value }) => (
         <div key={label} className="bg-gray-50 rounded-xl p-3 text-center">
           <div className="text-xl font-bold text-brand-blue">{value ?? '—'}</div>
           <div className="text-xs text-gray-500 mt-0.5">{label}</div>
-          {sub && <div className="text-xs text-gray-400">{sub}</div>}
         </div>
       ))}
     </div>
   )
 }
 
-// Stacked bar: blue OK (bottom) + red KO (top).
-// Always renders bars even when values are 0 so the chart is always visible.
+function SimpleBar({ data, xKey, dataKey = 'total', name = 'Socios', height = 190, layout = 'horizontal' }) {
+  if (!data?.length) return (
+    <div className="flex items-center justify-center text-gray-400 text-sm" style={{ height }}>Sin datos</div>
+  )
+  const isVertical = layout === 'vertical'
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} layout={layout}
+        margin={{ top: 5, right: isVertical ? 16 : 8, left: isVertical ? 4 : -18, bottom: 5 }}
+        barCategoryGap="40%">
+        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+        {isVertical ? (
+          <>
+            <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false}/>
+            <YAxis dataKey={xKey} type="category" tick={{ fontSize: 9 }} width={95}/>
+          </>
+        ) : (
+          <>
+            <XAxis dataKey={xKey} tick={{ fontSize: 10 }}/>
+            <YAxis tick={{ fontSize: 10 }} allowDecimals={false}/>
+          </>
+        )}
+        <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }}/>
+        <Bar dataKey={dataKey} name={name} fill={VOL_COLOR}
+          radius={isVertical ? [0,4,4,0] : [4,4,0,0]} maxBarSize={36}/>
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
 function StackedBar({ data, xKey, height = 190 }) {
   if (!data?.length) return (
     <div className="flex items-center justify-center text-gray-400 text-sm" style={{ height }}>Sin datos</div>
@@ -43,13 +71,10 @@ function StackedBar({ data, xKey, height = 190 }) {
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
         <XAxis dataKey={xKey} tick={{ fontSize: 10 }}/>
         <YAxis tick={{ fontSize: 10 }} allowDecimals={false}/>
-        <Tooltip
-          formatter={(v, name) => [v, name]}
-          contentStyle={{ fontSize: 12, borderRadius: 8 }}
-        />
+        <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }}/>
         <Legend iconSize={9} wrapperStyle={{ fontSize: 10 }}/>
-        <Bar dataKey="ok" name="OK (Socio)" fill={OK_COLOR} stackId="a" maxBarSize={40}/>
-        <Bar dataKey="ko" name="KO"         fill={KO_COLOR} stackId="a" radius={[4,4,0,0]} maxBarSize={40}/>
+        <Bar dataKey="ok" name="OK (Socio)" fill={OK_COLOR} stackId="a" maxBarSize={36}/>
+        <Bar dataKey="ko" name="KO"         fill={KO_COLOR} stackId="a" radius={[4,4,0,0]} maxBarSize={36}/>
       </BarChart>
     </ResponsiveContainer>
   )
@@ -82,80 +107,74 @@ export default function Estadisticas() {
       <Section title="Resumen general">
         <KPIRow items={[
           { label: 'Total socios',         value: data.total },
-          { label: 'Edad media',           value: data.edad_media ? `${data.edad_media} años` : null },
           { label: 'Cuota media',          value: data.cuota_media ? `${data.cuota_media}€` : null },
           { label: 'Socios con llamada ✓', value: data.llamada_ok },
+          { label: 'Socios OK',            value: data.por_ong?.reduce((s, o) => s + o.ok, 0) ?? null },
         ]}/>
       </Section>
 
-      {/* Volumen */}
-      <Section title="Volumen de ventas (socios con llamada ✓)">
-        <div className="flex gap-1.5 flex-wrap">
-          {[['mes','Meses'],['semana','Semanas'],['dia','Día semana']].map(([v,l]) => (
-            <button key={v} onClick={() => setVol(v)}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                volumen === v ? 'bg-brand-blue text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}>{l}</button>
-          ))}
+      {/* VOLUMEN */}
+      <Section title="Volumen  ·  total de socios por grupo">
+        <p className="text-xs text-gray-400 -mt-2">Cuántos socios hay en cada grupo, sin distinguir estado.</p>
+
+        {/* Temporal */}
+        <div>
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase">Alta por fecha (socios con llamada ✓)</h3>
+            <div className="flex gap-1">
+              {[['mes','Meses'],['semana','Semanas'],['dia','Día semana']].map(([v,l]) => (
+                <button key={v} onClick={() => setVol(v)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                    volumen === v ? 'bg-brand-blue text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}>{l}</button>
+              ))}
+            </div>
+          </div>
+          <SimpleBar data={volData} xKey="label" dataKey="socios" name="Socios" height={200}/>
         </div>
-        <ResponsiveContainer width="100%" height={210}>
-          <BarChart data={volData} margin={{ top: 5, right: 8, left: -18, bottom: 5 }} barCategoryGap="40%">
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-            <XAxis dataKey="label" tick={{ fontSize: 10 }}/>
-            <YAxis tick={{ fontSize: 10 }} allowDecimals={false}/>
-            <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }}/>
-            <Bar dataKey="socios" name="Socios" fill={OK_COLOR} radius={[4,4,0,0]} maxBarSize={40}/>
-          </BarChart>
-        </ResponsiveContainer>
-      </Section>
 
-      {/* Cuota media por estado */}
-      <Section title="Cuota media por estado (€)">
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={data.cuota_por_estado} layout="vertical"
-            margin={{ top: 5, right: 16, left: 4, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-            <XAxis type="number" tick={{ fontSize: 10 }}/>
-            <YAxis dataKey="estado" type="category" tick={{ fontSize: 9 }} width={95}/>
-            <Tooltip formatter={v => `${v}€`} contentStyle={{ fontSize: 12, borderRadius: 8 }}/>
-            <Bar dataKey="cuota_media" name="Cuota media (€)" fill={OK_COLOR} radius={[0,4,4,0]} maxBarSize={20}/>
-          </BarChart>
-        </ResponsiveContainer>
-      </Section>
-
-      {/* Calidad por perfil */}
-      <Section title="Calidad por perfil  ·  azul = OK · rojo = KO">
-        <p className="text-xs text-gray-400 -mt-2">
-          Cada barra muestra el total del grupo dividido en OK abajo (azul) y KO arriba (rojo).
-        </p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 pt-1">
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por ONG</h3>
+            <SimpleBar data={data.por_ong} xKey="ong" dataKey="total"/>
+          </div>
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por tramo de aportación</h3>
-            <StackedBar data={data.por_cuota_tramo} xKey="tramo"/>
+            <SimpleBar data={data.por_cuota_tramo} xKey="tramo" dataKey="total"/>
           </div>
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por tipo de documento</h3>
+            <SimpleBar data={data.por_documento} xKey="tipo" dataKey="total"/>
+          </div>
+        </div>
 
+        {/* Cuota media por estado */}
+        <div>
+          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Cuota media por estado (€)</h3>
+          <SimpleBar data={data.cuota_por_estado} xKey="estado" dataKey="cuota_media"
+            name="Cuota media (€)" height={200} layout="vertical"/>
+        </div>
+      </Section>
+
+      {/* CALIDAD */}
+      <Section title="Calidad  ·  azul = OK · rojo = KO">
+        <p className="text-xs text-gray-400 -mt-2">
+          Cada barra representa el total del grupo dividido en OK abajo (azul) y KO arriba (rojo).
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por ONG</h3>
             <StackedBar data={data.por_ong} xKey="ong"/>
           </div>
-
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por tramo de aportación</h3>
+            <StackedBar data={data.por_cuota_tramo} xKey="tramo"/>
+          </div>
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por tipo de documento</h3>
             <StackedBar data={data.por_documento} xKey="tipo"/>
           </div>
-
-          <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por tramo de edad</h3>
-            {!data.edad_media && (
-              <p className="text-xs text-gray-400 mb-1">
-                La edad se calcula desde fecha de nacimiento del formulario. Sin datos aún.
-              </p>
-            )}
-            <StackedBar data={data.edad_tramos} xKey="tramo"/>
-          </div>
-
         </div>
       </Section>
     </div>
