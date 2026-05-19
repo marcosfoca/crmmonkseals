@@ -122,6 +122,16 @@ function parseProductionTable(html) {
     if (!numFormul || !numFormul.match(/^\d+-\d+$/)) return
     if (!ong || ong === 'ONG') return
 
+    // Capture any detail-page link present in the row (usually on form number or name)
+    let detailHref = null
+    for (let i = 0; i < Math.min(cells.length, 8); i++) {
+      const href = $(cells[i]).find('a[href]').attr('href')
+      if (href && !href.startsWith('#') && !href.startsWith('javascript')) {
+        detailHref = href
+        break
+      }
+    }
+
     const donante      = $(cells[3]).text().trim()
     const llamada      = $(cells[4]).text().trim().toLowerCase() === 'si'
     const tipoSocio    = $(cells[5]).text().trim()
@@ -162,10 +172,34 @@ function parseProductionTable(html) {
       estado:              estado || null,
       comentarios_captador: comentCapt || null,
       comentarios_call:     comentCall || null,
+      _detailHref:          detailHref,
     })
   })
 
   return socios
+}
+
+const BASE_URL = 'https://comercial.topf2f.com'
+
+// Fetch a form detail page and extract numdir (birth date) and sexo.
+// topf2f stores birth date in input[name="numdir"] as DD/MM/YYYY.
+async function fetchFormDetail(cookies, href) {
+  const url = href.startsWith('http') ? href : BASE_URL + '/' + href.replace(/^\//, '')
+  const res = await fetch(url, { headers: commonHeaders(cookies), signal: AbortSignal.timeout(8000) })
+  if (!res.ok) return null
+  const html = await res.text()
+  const $ = cheerio.load(html)
+
+  // input[name="numdir"] holds birth date (DD/MM/YYYY)
+  const numdir = $('input[name="numdir"]').val()?.trim() || null
+
+  // sppgas: "1"=hombre "2"=mujer
+  const sppgasVal = $('select[name="sppgas"] option[selected]').val()?.trim()
+    || $('input[name="sppgas"]:checked').val()?.trim()
+    || null
+  const sexo = sppgasVal === '1' ? 'Hombre' : sppgasVal === '2' ? 'Mujer' : null
+
+  return { fecha_nacimiento: parseDate(numdir), sexo }
 }
 
 export default async function handler(req, res) {
@@ -205,14 +239,37 @@ export default async function handler(req, res) {
       })
     }
 
+    // For socios that have a detail link and no birth date in the list page,
+    // fetch the form detail page (up to 30 at a time, 5 in parallel) to get
+    // numdir (fecha_nacimiento) and sexo — fields not present in the production table.
+    const needsDetail = socios.filter(s => s._detailHref)
+    if (needsDetail.length > 0) {
+      const BATCH = 5, MAX = 30
+      const toFetch = needsDetail.slice(0, MAX)
+      for (let i = 0; i < toFetch.length; i += BATCH) {
+        const batch = toFetch.slice(i, i + BATCH)
+        await Promise.all(batch.map(async s => {
+          try {
+            const extra = await fetchFormDetail(cookies, s._detailHref)
+            if (extra?.fecha_nacimiento) s.fecha_nacimiento = extra.fecha_nacimiento
+            if (extra?.sexo) s.sexo = extra.sexo
+          } catch {}
+        }))
+      }
+    }
+
     let newCount = 0, updatedCount = 0
 
     for (const s of socios) {
-      const record = { ...s, captador_id: claim.id, last_sync: new Date().toISOString() }
+      const { _detailHref, ...rest } = s
+      const record = { ...rest, captador_id: claim.id, last_sync: new Date().toISOString() }
       const { data: existing } = await supabase
-        .from('socios').select('id').eq('num_formulario', s.num_formulario).single()
+        .from('socios').select('id, fecha_nacimiento').eq('num_formulario', s.num_formulario).single()
 
       if (existing) {
+        // Preserve existing fecha_nacimiento if we couldn't fetch a new one
+        if (!record.fecha_nacimiento && existing.fecha_nacimiento)
+          record.fecha_nacimiento = existing.fecha_nacimiento
         await supabase.from('socios').update(record).eq('id', existing.id)
         updatedCount++
       } else {
@@ -221,7 +278,10 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ ok: true, new: newCount, updated: updatedCount, total: socios.length })
+    const detailNote = needsDetail.length > 0
+      ? ` · ${Math.min(needsDetail.length, 30)} detalles con f. nacimiento`
+      : ''
+    return res.status(200).json({ ok: true, new: newCount, updated: updatedCount, total: socios.length, debug: detailNote || undefined })
 
   } catch (err) {
     return res.status(500).json({ error: err.message })
