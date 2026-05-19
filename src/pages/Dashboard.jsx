@@ -42,13 +42,22 @@ export default function Dashboard() {
   async function handleSync() {
     setSyncing(true)
     setSyncMsg('')
-    const res = await apiFetch('/api/sync', { method: 'POST' })
-    const data = await res?.json()
-    setSyncMsg(res?.ok
-      ? `✓ Sync OK — ${data.new} nuevos, ${data.updated} actualizados`
-      : `✗ ${data?.error || 'Error al sincronizar'}`)
-    setSyncing(false)
-    if (res?.ok) loadStats()
+    try {
+      const res = await apiFetch('/api/sync', { method: 'POST' })
+      if (!res) { setSyncing(false); return }
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        const main = `✓ Sync OK — ${data.new} nuevos, ${data.updated} actualizados`
+        setSyncMsg(data.debug ? `${main} · ${data.debug}` : main)
+        loadStats()
+      } else {
+        setSyncMsg(`✗ ${data?.error || 'Error al sincronizar'}`)
+      }
+    } catch (err) {
+      setSyncMsg(`✗ Error de red: ${err.message}`)
+    } finally {
+      setSyncing(false)
+    }
   }
 
   const today = format(new Date(), "EEEE d 'de' MMMM", { locale: es })

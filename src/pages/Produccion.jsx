@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { apiFetch } from '../lib/auth.js'
 import { Search, Filter, X, ChevronDown, ChevronUp } from 'lucide-react'
 import { format } from 'date-fns'
@@ -71,8 +71,20 @@ export default function Produccion() {
     setLoading(false)
   }, [nombre, dni, cuota, estado, ong, fechaDesde, fechaHasta, sortCol, sortDir])
 
-  useEffect(() => { setPage(1); load(1) }, [nombre, dni, cuota, estado, ong, fechaDesde, fechaHasta, sortCol, sortDir])
-  useEffect(() => { load(page) }, [page])
+  const prevFilters = useRef(null)
+
+  useEffect(() => {
+    const filters = JSON.stringify({ nombre, dni, cuota, estado, ong, fechaDesde, fechaHasta, sortCol, sortDir })
+    if (prevFilters.current !== null && prevFilters.current !== filters) {
+      // Filters changed: reset page and load page 1
+      setPage(1)
+      load(1)
+    } else {
+      // Initial mount or page change from pagination
+      load(page)
+    }
+    prevFilters.current = filters
+  }, [page, nombre, dni, cuota, estado, ong, fechaDesde, fechaHasta, sortCol, sortDir])
 
   function toggleSort(col) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')

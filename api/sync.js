@@ -5,6 +5,24 @@ import * as cheerio from 'cheerio'
 const LOGIN_URL = 'https://comercial.topf2f.com/usuarios/login.php'
 const PROD_URL  = 'https://comercial.topf2f.com/comercial_produccion.php'
 
+// Extract only name=value cookie pairs from Set-Cookie response headers.
+// Stripping metadata (path, HttpOnly, etc.) prevents corruption when
+// there are multiple Set-Cookie headers joined into one string.
+function extractCookieString(res) {
+  try {
+    if (typeof res.headers.getSetCookie === 'function') {
+      const cookies = res.headers.getSetCookie()
+      if (cookies.length > 0) {
+        return cookies.map(c => c.split(';')[0].trim()).filter(Boolean).join('; ')
+      }
+    }
+  } catch {}
+  const raw = res.headers.get('set-cookie') || ''
+  if (!raw) return ''
+  // Split on comma that precedes a new cookie name, then strip metadata
+  return raw.split(/,\s*(?=[A-Za-z_])/).map(c => c.split(';')[0].trim()).filter(Boolean).join('; ')
+}
+
 async function loginTopF2F(topf2f_user, topf2f_pass) {
   const formData = new URLSearchParams({
     user:   topf2f_user,
@@ -17,36 +35,45 @@ async function loginTopF2F(topf2f_user, topf2f_pass) {
     body: formData.toString(),
     redirect: 'manual'
   })
-  const cookies = res.headers.get('set-cookie') || ''
-  if (!cookies) throw new Error('Login fallido en topf2f: sin cookie de sesión')
 
-  // Check we got redirected (302) or a valid session
+  const cookieString = extractCookieString(res)
+  if (!cookieString) throw new Error('Login fallido en topf2f: sin cookie de sesión')
+
   const location = res.headers.get('location') || ''
   if (res.status !== 302 && !location.includes('index')) {
-    // Try to see if there's an error message
     const body = await res.text().catch(() => '')
     if (body.toLowerCase().includes('incorrecto') || body.toLowerCase().includes('error')) {
       throw new Error('Credenciales topf2f incorrectas')
     }
   }
-  return cookies
+  return cookieString
 }
 
+const commonHeaders = (cookies) => ({
+  Cookie: cookies,
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Referer': 'https://comercial.topf2f.com/'
+})
+
 async function fetchProduccion(cookies) {
-  // GET default page (current month) — the page loads data without POST params
-  const res = await fetch(PROD_URL, {
-    headers: {
-      Cookie: cookies,
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
-  })
+  const res = await fetch(PROD_URL, { headers: commonHeaders(cookies) })
   const html = await res.text()
 
-  // If we got redirected to login, session didn't work
   if (html.includes('login.php') && !html.includes('Formulario')) {
     throw new Error('Sesión topf2f inválida — login no funcionó correctamente')
   }
   return html
+}
+
+// Parse Spanish dd/mm/yyyy → ISO yyyy-mm-dd
+function parseDate(str) {
+  if (!str) return null
+  const s = str.trim()
+  if (!s || s === '--/--' || s === '—' || s === '--') return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`
+  return null
 }
 
 // Columns (verified from live page):
@@ -58,7 +85,6 @@ function parseProductionTable(html) {
   const $ = cheerio.load(html)
   const socios = []
 
-  // Find the table that has the detailed socio list (not the summary)
   let targetTable = null
   $('table').each((_, table) => {
     const headerRow = $(table).find('tr').first().text()
@@ -67,10 +93,7 @@ function parseProductionTable(html) {
     }
   })
 
-  // Fallback: scan all rows
-  const rows = targetTable
-    ? $(targetTable).find('tr')
-    : $('table tr')
+  const rows = targetTable ? $(targetTable).find('tr') : $('table tr')
 
   rows.each((_, row) => {
     const cells = $(row).find('td')
@@ -79,29 +102,25 @@ function parseProductionTable(html) {
     const ong      = $(cells[0]).text().trim()
     const numFormul = $(cells[1]).text().trim()
 
-    // Must look like a real formulario reference (e.g. "10026-1779097948")
     if (!numFormul || !numFormul.match(/^\d+-\d+$/)) return
-    // Skip if ONG field looks like a header
     if (!ong || ong === 'ONG') return
 
-    const donante     = $(cells[2]).text().trim()
-    const llamada     = $(cells[3]).text().trim().toLowerCase() === 'si'
-    const tipoSocio   = $(cells[4]).text().trim()
-    const pdfContrato = $(cells[5]).text().trim().toLowerCase() === 'si'
-    // cells[6] = teléfono (extra column not in header)
-    const intentos    = parseInt($(cells[7]).text().trim()) || 0
-    const cuota       = parseFloat($(cells[8]).text().trim().replace(',', '.')) || null
+    const donante      = $(cells[2]).text().trim()
+    const llamada      = $(cells[3]).text().trim().toLowerCase() === 'si'
+    const tipoSocio    = $(cells[4]).text().trim()
+    const pdfContrato  = $(cells[5]).text().trim().toLowerCase() === 'si'
+    const intentos     = parseInt($(cells[7]).text().trim()) || 0
+    const cuota        = parseFloat($(cells[8]).text().trim().replace(',', '.')) || null
     const periodicidad = $(cells[9]).text().trim()
-    const fFirma      = parseDate($(cells[10]).text().trim())
-    const fEntrega    = parseDate($(cells[11]).text().trim())
-    const fAlta       = parseDate($(cells[12]).text().trim())
-    const fOkKo       = parseDate($(cells[13]).text().trim())
-    const otraFCobro  = parseDate($(cells[14]).text().trim())
-    const estado      = $(cells[15]).text().trim()
-    const comentCapt  = cells[16] ? $(cells[16]).text().trim() : null
-    const comentCall  = cells[17] ? $(cells[17]).text().trim() : null
+    const fFirma       = parseDate($(cells[10]).text().trim())
+    const fEntrega     = parseDate($(cells[11]).text().trim())
+    const fAlta        = parseDate($(cells[12]).text().trim())
+    const fOkKo        = parseDate($(cells[13]).text().trim())
+    const otraFCobro   = parseDate($(cells[14]).text().trim())
+    const estado       = $(cells[15]).text().trim()
+    const comentCapt   = cells[16] ? $(cells[16]).text().trim() : null
+    const comentCall   = cells[17] ? $(cells[17]).text().trim() : null
 
-    // Parse full name into parts
     const parts     = donante.trim().split(/\s+/)
     const nombre    = parts[0] || ''
     const apellido1 = parts[1] || ''
@@ -131,12 +150,6 @@ function parseProductionTable(html) {
   return socios
 }
 
-function parseDate(str) {
-  if (!str || str === '--/--' || str === '—' || str === '--') return null
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str
-  return null
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -145,33 +158,32 @@ export default async function handler(req, res) {
 
   const supabase = db()
 
-  const { data: user } = await supabase
-    .from('users')
-    .select('topf2f_user, topf2f_pass, id')
-    .eq('id', claim.id)
-    .single()
-
-  if (!user?.topf2f_user || !user?.topf2f_pass) {
-    return res.status(400).json({
-      error: 'No tienes credenciales de topf2f configuradas. Ve a Admin → edita tu usuario y añade el usuario y contraseña de topf2f.'
-    })
-  }
-
-  const topf2f_pass = Buffer.from(user.topf2f_pass, 'base64').toString('utf8')
-
   try {
+    const { data: user } = await supabase
+      .from('users')
+      .select('topf2f_user, topf2f_pass, id')
+      .eq('id', claim.id)
+      .single()
+
+    if (!user?.topf2f_user || !user?.topf2f_pass) {
+      return res.status(400).json({
+        error: 'No tienes credenciales de topf2f configuradas. Ve a Admin → edita tu usuario y añade el usuario y contraseña de topf2f.'
+      })
+    }
+
+    const topf2f_pass = Buffer.from(user.topf2f_pass, 'base64').toString('utf8')
     const cookies = await loginTopF2F(user.topf2f_user, topf2f_pass)
     const html    = await fetchProduccion(cookies)
     const socios  = parseProductionTable(html)
 
     if (socios.length === 0) {
-      // Return a debug hint
-      const hasTable = html.includes('Formulario')
+      const hasTable   = html.includes('Formulario')
+      const tableCount = (html.match(/<table/gi) || []).length
       return res.status(200).json({
         ok: true, new: 0, updated: 0, total: 0,
         debug: hasTable
-          ? 'Página cargada OK pero sin socios en el período actual'
-          : 'Login puede haber fallado — la página no contiene datos de producción'
+          ? `Página cargada OK (${tableCount} tablas, ${html.length} chars) — sin filas de socios en la vista actual. La web puede estar filtrando solo el mes en curso.`
+          : `Posible fallo de sesión — la página no contiene tabla de producción (${html.length} chars).`
       })
     }
 
