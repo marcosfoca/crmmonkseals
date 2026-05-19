@@ -33,14 +33,15 @@ export default async function handler(req, res) {
     if (sexo === '1' || sexo === 'Hombre') updates.sexo = 'Hombre'
     else if (sexo === '2' || sexo === 'Mujer') updates.sexo = 'Mujer'
 
-    const { count } = await supabase
+    const { data, error: updateErr } = await supabase
       .from('socios')
       .update(updates)
       .eq('nif', cleanNif)
       .is('fecha_nacimiento', null)
-      .select('id', { count: 'exact', head: true })
+      .select('id')
 
-    return res.status(200).json({ ok: true, updated: count ?? 0 })
+    if (updateErr) throw new Error(updateErr.message)
+    return res.status(200).json({ ok: true, updated: data?.length ?? 0 })
   } catch (err) {
     return res.status(500).json({ error: err.message })
   }
