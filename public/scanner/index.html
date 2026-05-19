@@ -359,14 +359,6 @@ async function processPhoto() {
         var compressed = await compressImage(capturedDataUrl);
         var base64 = compressed.split(',')[1];
         var aiData = await callAnalyzeAPI(base64);
-        // Fire-and-forget: save birth date + sexo to CRM for later sync matching by NIF
-        if (aiData.nif) {
-            fetch('/api/scan/birthday', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nif: aiData.nif, numdir: aiData.numdir, sexo: aiData.sexo })
-            }).catch(function() {});
-        }
         openTargetForm(buildFormData(aiData));
     } catch (err) {
         document.getElementById('err-msg').textContent = err.message;

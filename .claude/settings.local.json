@@ -11,7 +11,19 @@
       "mcp__Claude_in_Chrome__read_page",
       "mcp__Claude_in_Chrome__get_page_text",
       "mcp__Claude_in_Chrome__javascript_tool",
-      "Bash(find /mnt/c/Users/marco/ClaudeCodeProjects/ScannerFormus -type f | head -50 2>/dev/null || ls /c/Users/marco/ClaudeCodeProjects/ScannerFormus 2>/dev/null || echo \"PATH_NOT_FOUND\")"
+      "Bash(find /mnt/c/Users/marco/ClaudeCodeProjects/ScannerFormus -type f | head -50 2>/dev/null || ls /c/Users/marco/ClaudeCodeProjects/ScannerFormus 2>/dev/null || echo \"PATH_NOT_FOUND\")",
+      "WebFetch(domain:apbkjyhmatjqsiqiiycrr.supabase.co)",
+      "WebFetch(domain:apbkjyhmatjqsiqiycrr.supabase.co)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "mcp__e8732357-d13b-44a7-89ce-632a5e858dce__list_projects",
+      "mcp__e8732357-d13b-44a7-89ce-632a5e858dce__list_teams",
+      "mcp__e8732357-d13b-44a7-89ce-632a5e858dce__get_runtime_logs",
+      "mcp__e8732357-d13b-44a7-89ce-632a5e858dce__list_deployments",
+      "Bash(git commit -m 'fix: correct supabase update return handling in scan/birthday *)",
+      "Bash(rm api/scan/birthday.js)",
+      "Bash(git commit -m 'revert: remove scanner birthday pipeline, keep only topf2f as data source *)"
     ]
   }
 }
