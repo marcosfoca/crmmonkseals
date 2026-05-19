@@ -23,9 +23,19 @@ function avg(arr) {
   if (!arr.length) return null
   return Math.round(arr.reduce((a,b) => a+b,0) / arr.length * 10) / 10
 }
-function pctOk(arr) {
-  if (!arr.length) return 0
-  return Math.round(arr.filter(s => s.estado?.trim() === 'SOCIO').length / arr.length * 100)
+
+function countOkKo(arr) {
+  const ok = arr.filter(s => s.estado?.trim() === 'SOCIO').length
+  return { ok, ko: arr.length - ok }
+}
+
+// starts with letter → NIE/Pasaporte, starts with digit → DNI
+function tipoDoc(nif) {
+  if (!nif) return 'Sin dato'
+  const n = nif.trim()
+  if (/^[A-Za-z]/.test(n)) return 'NIE/Pasaporte'
+  if (/^\d/.test(n)) return 'DNI'
+  return 'Sin dato'
 }
 
 const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
@@ -47,7 +57,7 @@ export default async function handler(req, res) {
     const supabase = db()
     const visibleIds = await getVisibleUserIds(supabase, claim.id, claim.role)
 
-    let q = supabase.from('socios').select('estado,llamada,cuota,fecha_alta,edad,sexo,nif,ong')
+    let q = supabase.from('socios').select('estado,llamada,cuota,fecha_alta,fecha_nacimiento,sexo,nif,ong')
     if (visibleIds) q = q.in('captador_id', visibleIds)
     const { data, error } = await q
 
@@ -55,26 +65,49 @@ export default async function handler(req, res) {
     if (!data?.length) return res.status(200).json(EMPTY)
 
     const total      = data.length
-    const edades     = data.map(s => s.edad).filter(Boolean)
-    const cuotas     = data.map(s => Number(s.cuota)).filter(Boolean)
     const llamada_ok = data.filter(s => s.llamada).length
-
-    const edad_media  = avg(edades)
+    const cuotas     = data.map(s => Number(s.cuota)).filter(Boolean)
     const cuota_media = avg(cuotas)
 
+    // Calculate age from fecha_nacimiento when available
+    const now = new Date()
+    const edades = data
+      .map(s => {
+        if (!s.fecha_nacimiento) return null
+        const dob = new Date(s.fecha_nacimiento)
+        if (isNaN(dob)) return null
+        let age = now.getFullYear() - dob.getFullYear()
+        const m = now.getMonth() - dob.getMonth()
+        if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age--
+        return age > 0 && age < 120 ? age : null
+      })
+      .filter(Boolean)
+
+    const edad_media = avg(edades)
     const edadFreq = {}
     edades.forEach(e => { edadFreq[e] = (edadFreq[e]||0)+1 })
-    const edad_moda = Object.entries(edadFreq).sort((a,b) => b[1]-a[1])[0]?.[0] || null
+    const edad_moda = edades.length
+      ? Object.entries(edadFreq).sort((a,b) => b[1]-a[1])[0]?.[0]
+      : null
 
+    // Edad tramos — ok/ko stacked
     const tramosEdad = [
       ['18-25', 18, 25], ['26-35', 26, 35], ['36-45', 36, 45],
       ['46-55', 46, 55], ['56-65', 56, 65], ['66+', 66, 150]
     ]
-    const edad_tramos = tramosEdad.map(([tramo, min, max]) => ({
-      tramo,
-      total: data.filter(s => s.edad >= min && s.edad <= max).length
-    }))
+    const edad_tramos = tramosEdad.map(([tramo, min, max]) => {
+      const arr = data.filter(s => {
+        const dob = s.fecha_nacimiento ? new Date(s.fecha_nacimiento) : null
+        if (!dob || isNaN(dob)) return false
+        let age = now.getFullYear() - dob.getFullYear()
+        const m = now.getMonth() - dob.getMonth()
+        if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age--
+        return age >= min && age <= max
+      })
+      return { tramo, ...countOkKo(arr) }
+    })
 
+    // Cuota por estado (cuota media — useful for understanding ticket size)
     const estadoGrupos = {}
     data.forEach(s => {
       const e = s.estado?.trim() || 'SIN ESTADO'
@@ -86,59 +119,47 @@ export default async function handler(req, res) {
       .sort((a,b) => b.cuota_media - a.cuota_media)
       .slice(0, 8)
 
-    const sexoGrupos = {}
+    // Por sexo — always include Hombre and Mujer
+    const sexoBuckets = { 'Hombre': [], 'Mujer': [] }
     data.forEach(s => {
-      const sx = s.sexo || 'Desconocido'
-      if (!sexoGrupos[sx]) sexoGrupos[sx] = []
-      sexoGrupos[sx].push(s)
+      const sx = s.sexo?.trim()
+      if (sx === 'Hombre' || sx === 'Mujer') sexoBuckets[sx].push(s)
     })
-    const por_sexo = Object.entries(sexoGrupos).map(([sexo, arr]) => ({
-      sexo,
-      cuota_media: avg(arr.map(s=>Number(s.cuota)).filter(Boolean)) || 0,
-      pct_ok: pctOk(arr)
+    const por_sexo = ['Hombre', 'Mujer'].map(sexo => ({
+      sexo, ...countOkKo(sexoBuckets[sexo])
     }))
 
-    function tipoDoc(nif) {
-      if (!nif) return 'Sin dato'
-      const n = nif.trim().toUpperCase()
-      if (/^[XYZ]/.test(n)) return 'NIE'
-      if (/^[A-Z]{2}/.test(n)) return 'Pasaporte'
-      if (/^\d{8}[A-Z]$/.test(n)) return 'DNI'
-      return 'Otro'
-    }
-    const docGrupos = {}
+    // Por documento — letter=NIE/Pasaporte, digit=DNI
+    const docBuckets = { 'DNI': [], 'NIE/Pasaporte': [], 'Sin dato': [] }
     data.forEach(s => {
       const t = tipoDoc(s.nif)
-      if (!docGrupos[t]) docGrupos[t] = []
-      docGrupos[t].push(s)
+      docBuckets[t].push(s)
     })
-    const por_documento = Object.entries(docGrupos).map(([tipo, arr]) => ({
-      tipo,
-      cuota_media: avg(arr.map(s=>Number(s.cuota)).filter(Boolean)) || 0,
-      pct_ok: pctOk(arr)
-    }))
+    const por_documento = Object.entries(docBuckets)
+      .filter(([, arr]) => arr.length > 0)
+      .map(([tipo, arr]) => ({ tipo, ...countOkKo(arr) }))
 
-    const ongGrupos = {}
+    // Por ONG — ok/ko stacked
+    const ongBuckets = {}
     data.forEach(s => {
-      const o = s.ong || 'Sin ONG'
-      if (!ongGrupos[o]) ongGrupos[o] = []
-      ongGrupos[o].push(s)
+      const o = (s.ong || 'Sin ONG').replace('_', ' ')
+      if (!ongBuckets[o]) ongBuckets[o] = []
+      ongBuckets[o].push(s)
     })
-    const por_ong = Object.entries(ongGrupos).map(([ong, arr]) => ({
-      ong: ong.replace('_',' '),
-      cuota_media: avg(arr.map(s=>Number(s.cuota)).filter(Boolean)) || 0,
-      pct_ok: pctOk(arr)
-    }))
+    const por_ong = Object.entries(ongBuckets)
+      .map(([ong, arr]) => ({ ong, ...countOkKo(arr) }))
 
+    // Por tramo de cuota — ok/ko stacked
     const tramosC = [
       ['≤6€', 0, 6], ['7-10€', 7, 10], ['11-15€', 11, 15],
       ['16-20€', 16, 20], ['21-25€', 21, 25], ['>25€', 26, 999]
     ]
     const por_cuota_tramo = tramosC.map(([tramo, min, max]) => {
       const arr = data.filter(s => Number(s.cuota) >= min && Number(s.cuota) <= max)
-      return { tramo, total: arr.length, pct_ok: pctOk(arr) }
+      return { tramo, ...countOkKo(arr) }
     })
 
+    // Volumen por tiempo
     const ventasData = data.filter(s => s.llamada && s.fecha_alta)
 
     const mesesMap = {}

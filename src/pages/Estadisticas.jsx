@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { apiFetch } from '../lib/auth.js'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  PieChart, Pie, Cell, LineChart, Line, ResponsiveContainer
+  ResponsiveContainer
 } from 'recharts'
 
-const COLORS = ['#094f82','#cc0000','#16a34a','#d97706','#7c3aed','#0891b2']
+const OK_COLOR = '#094f82'  // brand-blue — OK (bottom)
+const KO_COLOR = '#cc0000'  // brand-red  — KO (top)
 
 function Section({ title, children }) {
   return (
@@ -30,40 +31,68 @@ function KPIRow({ items }) {
   )
 }
 
+// Stacked bar: blue OK (bottom) + red KO (top). Shows volume AND quality together.
+function StackedBar({ data, xKey, height = 200 }) {
+  const hasData = data?.some(d => (d.ok || 0) + (d.ko || 0) > 0)
+  if (!hasData) {
+    return (
+      <div className="flex items-center justify-center text-gray-400 text-sm" style={{ height }}>
+        Sin datos suficientes
+      </div>
+    )
+  }
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+        <XAxis dataKey={xKey} tick={{ fontSize: 11 }}/>
+        <YAxis tick={{ fontSize: 11 }} allowDecimals={false}/>
+        <Tooltip
+          formatter={(value, name) => [value, name]}
+          labelFormatter={l => `${l}`}
+        />
+        <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }}/>
+        <Bar dataKey="ok" name="OK (Socio)" fill={OK_COLOR} stackId="a"/>
+        <Bar dataKey="ko" name="KO"         fill={KO_COLOR} stackId="a" radius={[4,4,0,0]}/>
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
 export default function Estadisticas() {
-  const [data, setData]     = useState(null)
-  const [loading, setLoad]  = useState(true)
-  const [volumen, setVol]   = useState('mes') // mes | semana | dia
+  const [data, setData]    = useState(null)
+  const [loading, setLoad] = useState(true)
+  const [volumen, setVol]  = useState('mes')
 
   useEffect(() => {
     apiFetch('/api/socios/estadisticas').then(async r => {
       if (r?.ok) setData(await r.json())
       setLoad(false)
-    })
+    }).catch(() => setLoad(false))
   }, [])
 
   if (loading) return <div className="text-center py-20 text-gray-400">Cargando estadísticas...</div>
   if (!data)   return <div className="text-center py-20 text-red-500">Error al cargar datos</div>
 
-  const volData = volumen === 'mes'    ? data.volumen_por_mes
-               : volumen === 'semana'  ? data.volumen_por_semana
+  const volData = volumen === 'mes'   ? data.volumen_por_mes
+               : volumen === 'semana' ? data.volumen_por_semana
                : data.volumen_por_dia
 
   return (
     <div className="flex flex-col gap-5">
       <h1 className="text-xl font-bold text-gray-900">Estadísticas del equipo</h1>
 
-      {/* ── KPIs generales ── */}
+      {/* ── KPIs ── */}
       <Section title="Resumen general">
         <KPIRow items={[
-          { label: 'Total socios',      value: data.total },
-          { label: 'Edad media',        value: data.edad_media ? `${data.edad_media} años` : null },
-          { label: 'Cuota media',       value: data.cuota_media ? `${data.cuota_media}€` : null },
-          { label: 'Socios con llamada OK', value: data.llamada_ok },
+          { label: 'Total socios',         value: data.total },
+          { label: 'Edad media',           value: data.edad_media ? `${data.edad_media} años` : null },
+          { label: 'Cuota media',          value: data.cuota_media ? `${data.cuota_media}€` : null },
+          { label: 'Socios con llamada ✓', value: data.llamada_ok },
         ]}/>
       </Section>
 
-      {/* ── Volumen de ventas por tiempo ── */}
+      {/* ── Volumen por tiempo ── */}
       <Section title="Volumen de ventas (socios con llamada ✓)">
         <div className="flex gap-2">
           {[['mes','Por meses'],['semana','Por semanas'],['dia','Por día semana']].map(([v,l]) => (
@@ -77,116 +106,73 @@ export default function Estadisticas() {
           <BarChart data={volData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
             <XAxis dataKey="label" tick={{ fontSize: 11 }}/>
-            <YAxis tick={{ fontSize: 11 }}/>
+            <YAxis tick={{ fontSize: 11 }} allowDecimals={false}/>
             <Tooltip/>
-            <Bar dataKey="socios" name="Socios" fill={COLORS[0]} radius={[4,4,0,0]}/>
+            <Bar dataKey="socios" name="Socios" fill={OK_COLOR} radius={[4,4,0,0]}/>
           </BarChart>
         </ResponsiveContainer>
       </Section>
 
-      {/* ── Distribución por edad ── */}
-      <div className="grid md:grid-cols-2 gap-5">
-        <Section title="Distribución por tramo de edad">
-          <div className="flex gap-6 text-sm text-gray-600 mb-2">
-            <span>Media: <strong>{data.edad_media} años</strong></span>
-            <span>Más común: <strong>{data.edad_moda}</strong></span>
-          </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={data.edad_tramos} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-              <XAxis dataKey="tramo" tick={{ fontSize: 11 }}/>
-              <YAxis tick={{ fontSize: 11 }}/>
-              <Tooltip/>
-              <Bar dataKey="total" name="Socios" fill={COLORS[1]} radius={[4,4,0,0]}/>
-            </BarChart>
-          </ResponsiveContainer>
-        </Section>
+      {/* ── Cuota por estado (ticket medio) ── */}
+      <Section title="Cuota media por estado (€)">
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={data.cuota_por_estado} layout="vertical"
+            margin={{ top: 5, right: 20, left: 60, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+            <XAxis type="number" tick={{ fontSize: 11 }}/>
+            <YAxis dataKey="estado" type="category" tick={{ fontSize: 10 }} width={90}/>
+            <Tooltip formatter={v => `${v}€`}/>
+            <Bar dataKey="cuota_media" name="Cuota media (€)" fill={OK_COLOR} radius={[0,4,4,0]}/>
+          </BarChart>
+        </ResponsiveContainer>
+      </Section>
 
-        {/* ── Aportaciones por estado ── */}
-        <Section title="Cuotas por estado (OK / KO / Otros)">
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={data.cuota_por_estado} layout="vertical"
-              margin={{ top: 5, right: 20, left: 60, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-              <XAxis type="number" tick={{ fontSize: 11 }}/>
-              <YAxis dataKey="estado" type="category" tick={{ fontSize: 10 }} width={90}/>
-              <Tooltip formatter={(v) => `${v}€`}/>
-              <Bar dataKey="cuota_media" name="Cuota media (€)" fill={COLORS[0]} radius={[0,4,4,0]}/>
-            </BarChart>
-          </ResponsiveContainer>
-        </Section>
-      </div>
-
-      {/* ── Calidad de perfil ── */}
-      <Section title="Calidad de socio por perfil">
-        <p className="text-xs text-gray-400 mb-2">
-          Cuota media y % de socios OK según cada variable — interpreta qué perfil te funciona mejor.
+      {/* ── Calidad por perfil — stacked ok/ko ── */}
+      <Section title="Calidad de socio por perfil (azul = OK · rojo = KO)">
+        <p className="text-xs text-gray-400 -mt-1">
+          Cada barra muestra el total de socios del grupo dividido en OK (azul, abajo) y KO (rojo, arriba).
+          Compara volumen y calidad al mismo tiempo.
         </p>
+
         <div className="grid md:grid-cols-2 gap-6">
+
+          {/* Por tramo de aportación */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por tramo de aportación</h3>
+            <StackedBar data={data.por_cuota_tramo} xKey="tramo"/>
+          </div>
 
           {/* Por sexo */}
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por sexo</h3>
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={data.por_sexo}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-                <XAxis dataKey="sexo" tick={{ fontSize: 11 }}/>
-                <YAxis tick={{ fontSize: 11 }}/>
-                <Tooltip/>
-                <Bar dataKey="cuota_media" name="Cuota media (€)" fill={COLORS[2]} radius={[4,4,0,0]}/>
-                <Bar dataKey="pct_ok" name="% OK" fill={COLORS[3]} radius={[4,4,0,0]}/>
-                <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }}/>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Por tipo documento */}
-          <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por tipo de documento</h3>
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={data.por_documento}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-                <XAxis dataKey="tipo" tick={{ fontSize: 11 }}/>
-                <YAxis tick={{ fontSize: 11 }}/>
-                <Tooltip/>
-                <Bar dataKey="cuota_media" name="Cuota media (€)" fill={COLORS[4]} radius={[4,4,0,0]}/>
-                <Bar dataKey="pct_ok" name="% OK" fill={COLORS[5]} radius={[4,4,0,0]}/>
-                <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }}/>
-              </BarChart>
-            </ResponsiveContainer>
+            <StackedBar data={data.por_sexo} xKey="sexo"/>
           </div>
 
           {/* Por ONG */}
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por ONG</h3>
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={data.por_ong}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-                <XAxis dataKey="ong" tick={{ fontSize: 11 }}/>
-                <YAxis tick={{ fontSize: 11 }}/>
-                <Tooltip/>
-                <Bar dataKey="cuota_media" name="Cuota media (€)" fill={COLORS[0]} radius={[4,4,0,0]}/>
-                <Bar dataKey="pct_ok" name="% OK" fill={COLORS[1]} radius={[4,4,0,0]}/>
-                <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }}/>
-              </BarChart>
-            </ResponsiveContainer>
+            <StackedBar data={data.por_ong} xKey="ong"/>
           </div>
 
-          {/* Por tramo aportación */}
+          {/* Por tipo documento */}
           <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por tramo de aportación</h3>
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={data.por_cuota_tramo}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-                <XAxis dataKey="tramo" tick={{ fontSize: 11 }}/>
-                <YAxis tick={{ fontSize: 11 }}/>
-                <Tooltip/>
-                <Bar dataKey="total" name="Socios" fill={COLORS[2]} radius={[4,4,0,0]}/>
-                <Bar dataKey="pct_ok" name="% OK" fill={COLORS[3]} radius={[4,4,0,0]}/>
-                <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }}/>
-              </BarChart>
-            </ResponsiveContainer>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por tipo de documento</h3>
+            <StackedBar data={data.por_documento} xKey="tipo"/>
           </div>
+
+          {/* Por tramo de edad */}
+          <div className="md:col-span-2">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Por tramo de edad</h3>
+            {data.edad_media
+              ? <p className="text-xs text-gray-500 mb-2">
+                  Media: <strong>{data.edad_media} años</strong>
+                  {data.edad_moda ? <> · Más común: <strong>{data.edad_moda} años</strong></> : null}
+                </p>
+              : <p className="text-xs text-gray-400 mb-2">Sin datos de edad — el campo fecha de nacimiento no se extrae del sync automático.</p>
+            }
+            <StackedBar data={data.edad_tramos} xKey="tramo" height={180}/>
+          </div>
+
         </div>
       </Section>
     </div>
