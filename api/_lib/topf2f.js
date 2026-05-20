@@ -78,16 +78,9 @@ export function discoverTeamUrl(html) {
   return teamUrl
 }
 
-// Fetch team production HTML — tries GET first, then POST with same params
+// Fetch team production HTML — always uses POST with date params (like the individual page)
 export async function fetchTeamHtml(cookies, teamUrl) {
   const isLoggedOut = (h) => h.includes('login.php') || h.includes('usuarios/login')
-  try {
-    const r = await fetch(teamUrl, { headers: commonHeaders(cookies) })
-    if (r.ok) {
-      const h = await r.text()
-      if (!isLoggedOut(h)) return h
-    }
-  } catch {}
   try {
     const r = await fetch(teamUrl, {
       method: 'POST',
