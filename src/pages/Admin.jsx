@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiFetch, ROLE_LABELS, ROLES } from '../lib/auth.js'
-import { UserPlus, Pencil, Trash2, X, Check, Eye, EyeOff } from 'lucide-react'
+import { UserPlus, Pencil, Trash2, X, Check, Eye, EyeOff, RefreshCw } from 'lucide-react'
 
 const ROLE_OPTIONS = Object.entries(ROLE_LABELS)
   .filter(([k]) => Number(k) !== ROLES.ADMIN)
@@ -18,18 +18,24 @@ const ROLE_BADGE = {
 
 const EMPTY_FORM = {
   username: '', password: '', nombre: '', apellidos: '',
-  role: 1, topf2f_user: '', topf2f_pass: '', parent_id: '', activo: true
+  role: 1, parent_id: '', activo: true,
+  es_raiz: false,
+  topf2f_user: '', topf2f_pass: '',
+  topf2f_captador_nombre: '',
 }
 
 export default function Admin() {
-  const [users, setUsers]   = useState([])
-  const [loading, setLoad]  = useState(true)
-  const [modal, setModal]   = useState(null)
-  const [form, setForm]     = useState(EMPTY_FORM)
-  const [saving, setSaving] = useState(false)
-  const [error, setError]   = useState('')
-  const [showPw, setShowPw] = useState(false)
-  const [editId, setEditId] = useState(null)
+  const [users, setUsers]             = useState([])
+  const [loading, setLoad]            = useState(true)
+  const [modal, setModal]             = useState(null)
+  const [form, setForm]               = useState(EMPTY_FORM)
+  const [saving, setSaving]           = useState(false)
+  const [error, setError]             = useState('')
+  const [showPw, setShowPw]           = useState(false)
+  const [editId, setEditId]           = useState(null)
+  const [captadores, setCaptadores]   = useState([])
+  const [captLoad, setCaptLoad]       = useState(false)
+  const [captErr, setCaptErr]         = useState('')
 
   useEffect(() => { loadUsers() }, [])
 
@@ -40,27 +46,69 @@ export default function Admin() {
     setLoad(false)
   }
 
+  async function loadCaptadores() {
+    setCaptLoad(true); setCaptErr('')
+    try {
+      const res = await apiFetch('/api/topf2f/captadores')
+      if (!res) { setCaptLoad(false); return }
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) setCaptadores(data.captadores || [])
+      else setCaptErr(data.error || 'Error al cargar captadores de topf2f')
+    } catch (e) {
+      setCaptErr('Error de red: ' + e.message)
+    } finally {
+      setCaptLoad(false)
+    }
+  }
+
   function openCreate() {
     setForm(EMPTY_FORM); setError(''); setEditId(null); setModal('create')
+    loadCaptadores()
   }
+
   function openEdit(u) {
+    const esRaiz = !!u.topf2f_user
     setForm({
       username: u.username, password: '', nombre: u.nombre,
       apellidos: u.apellidos || '', role: u.role,
+      parent_id: u.parent_id || '', activo: u.activo,
+      es_raiz: esRaiz,
       topf2f_user: u.topf2f_user || '', topf2f_pass: '',
-      parent_id: u.parent_id || '', activo: u.activo
+      topf2f_captador_nombre: u.topf2f_captador_nombre || '',
     })
     setEditId(u.id); setError(''); setModal('edit')
+    if (!esRaiz) loadCaptadores()
+  }
+
+  function setField(k, v) { setForm(f => ({ ...f, [k]: v })) }
+
+  function toggleRaiz(checked) {
+    setForm(f => ({
+      ...f,
+      es_raiz: checked,
+      topf2f_user: '', topf2f_pass: '',
+      topf2f_captador_nombre: '',
+    }))
+    if (!checked) loadCaptadores()
   }
 
   async function handleSave() {
     setSaving(true); setError('')
     try {
-      const body = { ...form }
-      if (!body.password && modal === 'edit') delete body.password
+      const body = {
+        username: form.username, password: form.password || undefined,
+        nombre: form.nombre, apellidos: form.apellidos,
+        role: form.role, parent_id: form.parent_id, activo: form.activo,
+        topf2f_user:            form.es_raiz ? form.topf2f_user : '',
+        topf2f_pass:            form.es_raiz ? form.topf2f_pass : '',
+        topf2f_captador_nombre: !form.es_raiz ? form.topf2f_captador_nombre : '',
+      }
+      if (modal === 'edit' && !body.password) delete body.password
+
       const res = modal === 'create'
         ? await apiFetch('/api/users', { method: 'POST', body: JSON.stringify(body) })
         : await apiFetch(`/api/users/${editId}`, { method: 'PUT', body: JSON.stringify(body) })
+
       if (!res) { setSaving(false); return }
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setError(data?.error || `Error ${res.status}`); setSaving(false); return }
@@ -97,7 +145,7 @@ export default function Admin() {
           <div className="text-center py-10 text-gray-400 text-sm">Cargando...</div>
         ) : (
           <>
-            {/* ── Mobile card list (< md) ── */}
+            {/* Mobile */}
             <ul className="md:hidden divide-y divide-gray-100">
               {users.map(u => (
                 <li key={u.id} className="flex items-center gap-3 px-4 py-3">
@@ -111,7 +159,10 @@ export default function Admin() {
                     </div>
                     <div className="text-xs text-gray-400 font-mono mt-0.5">@{u.username}</div>
                     {u.topf2f_user && (
-                      <div className="text-xs text-gray-400">topf2f: {u.topf2f_user}</div>
+                      <div className="text-xs text-gray-400">topf2f raíz: {u.topf2f_user}</div>
+                    )}
+                    {u.topf2f_captador_nombre && (
+                      <div className="text-xs text-gray-400">captador: {u.topf2f_captador_nombre}</div>
                     )}
                   </div>
                   <div className="flex gap-1 shrink-0">
@@ -131,11 +182,11 @@ export default function Admin() {
               )}
             </ul>
 
-            {/* ── Desktop table (md+) ── */}
+            {/* Desktop */}
             <table className="hidden md:table w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['Nombre','Usuario','Rango','Responsable de','topf2f','Estado',''].map(h => (
+                  {['Nombre','Usuario','Rango','Responsable de','Enlace topf2f','Estado',''].map(h => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -143,6 +194,11 @@ export default function Admin() {
               <tbody className="divide-y divide-gray-100">
                 {users.map(u => {
                   const children = users.filter(c => c.parent_id === u.id)
+                  const topfLabel = u.topf2f_user
+                    ? `raíz: ${u.topf2f_user}`
+                    : u.topf2f_captador_nombre
+                    ? `captador: ${u.topf2f_captador_nombre}`
+                    : '—'
                   return (
                     <tr key={u.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium">{u.nombre} {u.apellidos}</td>
@@ -157,7 +213,7 @@ export default function Admin() {
                           ? children.slice(0,3).map(c => c.nombre).join(', ') + (children.length > 3 ? ` +${children.length-3}` : '')
                           : '—'}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500 font-mono">{u.topf2f_user || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500 font-mono">{topfLabel}</td>
                       <td className="px-4 py-3">
                         <span className={`badge ${u.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                           {u.activo ? 'Activo' : 'Inactivo'}
@@ -201,33 +257,35 @@ export default function Admin() {
             </div>
 
             <div className="px-5 py-4 flex flex-col gap-4">
+              {/* Nombre + Apellidos */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Nombre *</label>
                   <input className="input" value={form.nombre}
-                    onChange={e => setForm(f => ({...f, nombre: e.target.value}))}/>
+                    onChange={e => setField('nombre', e.target.value)}/>
                 </div>
                 <div>
                   <label className="label">Apellidos</label>
                   <input className="input" value={form.apellidos}
-                    onChange={e => setForm(f => ({...f, apellidos: e.target.value}))}/>
+                    onChange={e => setField('apellidos', e.target.value)}/>
                 </div>
               </div>
 
+              {/* Usuario + Contraseña */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Usuario *</label>
                   <input className="input" value={form.username} autoComplete="off"
-                    onChange={e => setForm(f => ({...f, username: e.target.value}))}/>
+                    onChange={e => setField('username', e.target.value)}/>
                 </div>
                 <div>
                   <label className="label">
-                    Contraseña {modal === 'edit' && <span className="normal-case text-gray-400 font-normal">(vacío = no cambiar)</span>}
+                    Contraseña{modal === 'edit' && <span className="normal-case text-gray-400 font-normal ml-1">(vacío = no cambiar)</span>}
                   </label>
                   <div className="relative">
                     <input className="input pr-9" type={showPw ? 'text' : 'password'}
                       value={form.password} autoComplete="new-password"
-                      onChange={e => setForm(f => ({...f, password: e.target.value}))}/>
+                      onChange={e => setField('password', e.target.value)}/>
                     <button type="button" tabIndex={-1} onClick={() => setShowPw(p=>!p)}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400">
                       {showPw ? <EyeOff size={14}/> : <Eye size={14}/>}
@@ -236,18 +294,19 @@ export default function Admin() {
                 </div>
               </div>
 
+              {/* Rango + Superior */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Rango *</label>
                   <select className="input" value={form.role}
-                    onChange={e => setForm(f => ({...f, role: Number(e.target.value)}))}>
+                    onChange={e => setField('role', Number(e.target.value))}>
                     {ROLE_OPTIONS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="label">Superior directo</label>
                   <select className="input" value={form.parent_id}
-                    onChange={e => setForm(f => ({...f, parent_id: e.target.value}))}>
+                    onChange={e => setField('parent_id', e.target.value)}>
                     <option value="">— Sin responsable —</option>
                     {parentOptions.map(u => (
                       <option key={u.id} value={u.id}>{u.nombre} ({ROLE_LABELS[u.role]})</option>
@@ -256,23 +315,68 @@ export default function Admin() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Usuario topf2f</label>
-                  <input className="input" value={form.topf2f_user} placeholder="ej: 10026"
-                    onChange={e => setForm(f => ({...f, topf2f_user: e.target.value}))}/>
+              {/* topf2f section */}
+              <div className="border border-gray-200 rounded-xl p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Enlace con topf2f</span>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={form.es_raiz}
+                      onChange={e => toggleRaiz(e.target.checked)}
+                      className="rounded"/>
+                    <span className="text-xs text-gray-600">Estructura propia (raíz)</span>
+                  </label>
                 </div>
-                <div>
-                  <label className="label">Contraseña topf2f</label>
-                  <input className="input" type="password" value={form.topf2f_pass}
-                    autoComplete="off"
-                    onChange={e => setForm(f => ({...f, topf2f_pass: e.target.value}))}/>
-                </div>
+
+                {form.es_raiz ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label">Usuario topf2f</label>
+                      <input className="input" value={form.topf2f_user} placeholder="ej: 10026"
+                        onChange={e => setField('topf2f_user', e.target.value)}/>
+                    </div>
+                    <div>
+                      <label className="label">Contraseña topf2f</label>
+                      <input className="input" type="password" value={form.topf2f_pass}
+                        autoComplete="off"
+                        onChange={e => setField('topf2f_pass', e.target.value)}/>
+                    </div>
+                    <p className="col-span-2 text-xs text-gray-400">
+                      Este usuario gestiona su propia estructura en topf2f y puede sincronizar.
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="label flex items-center justify-between">
+                      <span>Captador en topf2f</span>
+                      <button type="button" onClick={loadCaptadores}
+                        className="text-gray-400 hover:text-brand-blue"
+                        title="Recargar lista">
+                        <RefreshCw size={12} className={captLoad ? 'animate-spin' : ''}/>
+                      </button>
+                    </label>
+                    {captErr && (
+                      <p className="text-xs text-red-500 mb-1">{captErr}</p>
+                    )}
+                    <select className="input" value={form.topf2f_captador_nombre}
+                      onChange={e => setField('topf2f_captador_nombre', e.target.value)}
+                      disabled={captLoad}>
+                      <option value="">— Sin enlazar —</option>
+                      {captLoad && <option disabled>Cargando de topf2f…</option>}
+                      {captadores.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Selecciona a qué captador de la producción de equipo corresponde este usuario.
+                    </p>
+                  </div>
+                )}
               </div>
 
+              {/* Activo */}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.activo}
-                  onChange={e => setForm(f => ({...f, activo: e.target.checked}))}
+                  onChange={e => setField('activo', e.target.checked)}
                   className="rounded"/>
                 <span className="text-sm text-gray-700">Usuario activo</span>
               </label>

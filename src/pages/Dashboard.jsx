@@ -72,18 +72,20 @@ export default function Dashboard() {
           </h1>
           <p className="text-sm text-gray-500 capitalize mt-0.5">{today}</p>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <button onClick={handleSync} disabled={syncing}
-            className="btn-secondary gap-2">
-            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''}/>
-            {syncing ? 'Sincronizando...' : 'Sincronizar con topf2f'}
-          </button>
-          {syncMsg && (
-            <span className={`text-xs max-w-xs text-right break-words ${syncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
-              {syncMsg}
-            </span>
-          )}
-        </div>
+        {user?.topf2f_user && (
+          <div className="flex flex-col items-end gap-1">
+            <button onClick={handleSync} disabled={syncing}
+              className="btn-secondary gap-2">
+              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''}/>
+              {syncing ? 'Sincronizando...' : 'Sincronizar con topf2f'}
+            </button>
+            {syncMsg && (
+              <span className={`text-xs max-w-xs text-right break-words ${syncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+                {syncMsg}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Stats grid */}

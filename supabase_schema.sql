@@ -15,8 +15,9 @@ CREATE TABLE IF NOT EXISTS users (
   apellidos     TEXT,
   role          INT  NOT NULL DEFAULT 1,
   -- 1=Captador 2=Formador 3=JefeEquipo 4=Director 5=Gerente 6=Supergerente 99=Admin
-  topf2f_user   TEXT,
-  topf2f_pass   TEXT,     -- base64-encoded, NOT plaintext
+  topf2f_user             TEXT,
+  topf2f_pass             TEXT,     -- base64-encoded, NOT plaintext
+  topf2f_captador_nombre  TEXT,     -- name as shown in topf2f team production (for non-root users)
   parent_id     UUID REFERENCES users(id) ON DELETE SET NULL,
   activo        BOOLEAN NOT NULL DEFAULT true,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),

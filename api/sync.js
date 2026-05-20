@@ -1,201 +1,6 @@
 import { db } from './_lib/db.js'
 import { authMiddleware } from './_lib/jwt.js'
-import * as cheerio from 'cheerio'
-
-const LOGIN_URL = 'https://comercial.topf2f.com/usuarios/login.php'
-const PROD_URL  = 'https://comercial.topf2f.com/comercial_produccion.php'
-const BASE_URL  = 'https://comercial.topf2f.com'
-
-function extractCookieString(res) {
-  try {
-    if (typeof res.headers.getSetCookie === 'function') {
-      const cookies = res.headers.getSetCookie()
-      if (cookies.length > 0)
-        return cookies.map(c => c.split(';')[0].trim()).filter(Boolean).join('; ')
-    }
-  } catch {}
-  const raw = res.headers.get('set-cookie') || ''
-  if (!raw) return ''
-  return raw.split(/,\s*(?=[A-Za-z_])/).map(c => c.split(';')[0].trim()).filter(Boolean).join('; ')
-}
-
-async function loginTopF2F(topf2f_user, topf2f_pass) {
-  const res = await fetch(LOGIN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ user: topf2f_user, pass: topf2f_pass, Submit: 'Entrar' }).toString(),
-    redirect: 'manual'
-  })
-  const cookieString = extractCookieString(res)
-  if (!cookieString) throw new Error('Login fallido en topf2f: sin cookie de sesión')
-  return cookieString
-}
-
-const commonHeaders = (cookies) => ({
-  Cookie: cookies,
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Referer': BASE_URL + '/'
-})
-
-async function fetchProduccion(cookies) {
-  const res = await fetch(PROD_URL, {
-    method: 'POST',
-    headers: { ...commonHeaders(cookies), 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      fechainicio: '2020-01-01', fechafin: '2030-12-31',
-      filtrofecha: '0', estadobo: '0',
-      SI_A: 'Si. Esta es la consulta que quiero hacer.'
-    }).toString()
-  })
-  const html = await res.text()
-  if (html.includes('login.php') && !html.includes('Formulario'))
-    throw new Error('Sesión topf2f inválida — login no funcionó correctamente')
-  return html
-}
-
-function parseDate(str) {
-  if (!str) return null
-  const s = str.trim()
-  if (!s || s === '--/--' || s === '—' || s === '--') return null
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`
-  return null
-}
-
-// Data rows verified from live DOM: 19 cells
-// 0:empty 1:ONG 2:NºFormulario 3:Donante 4:Llamada 5:TipoSocio 6:PDF
-// 7:Teléfono 8:NºIntentos 9:Cuota 10:Periodicidad
-// 11:FFirma 12:FEntrega 13:FAlta 14:FOkKo 15:OtraFecha 16:Estado 17:ComentCapt 18:ComentCall
-function extractDetailUrl($, row, cells) {
-  // Check row-level onclick (common in PHP CRMs: onclick="location.href='...'" or window.open)
-  const rowOnclick = $(row).attr('onclick') || ''
-  const m1 = rowOnclick.match(/(?:location\.href|window\.open)\s*[=(]['"]([^'"]+)['"]/)
-  if (m1) return m1[1].startsWith('http') ? m1[1] : BASE_URL + '/' + m1[1].replace(/^\//, '')
-
-  // Check all cells for href or onclick
-  for (let i = 0; i < cells.length; i++) {
-    const cell = $(cells[i])
-    const href = cell.find('a').attr('href')
-    if (href) return href.startsWith('http') ? href : BASE_URL + '/' + href.replace(/^\//, '')
-    const onclick = cell.attr('onclick') || cell.find('[onclick]').attr('onclick') || ''
-    const m2 = onclick.match(/(?:location\.href|window\.open|href)\s*[=(]['"]([^'"]+)['"]/)
-    if (m2) return m2[1].startsWith('http') ? m2[1] : BASE_URL + '/' + m2[1].replace(/^\//, '')
-  }
-  return null
-}
-
-function parseProductionTable(html) {
-  const $ = cheerio.load(html)
-  const socios = []
-  let rowSample = null
-
-  let targetTable = null
-  $('table').each((_, t) => {
-    if ($(t).find('tr').first().text().includes('Formulario') ||
-        $(t).find('tr').first().text().includes('Donante')) targetTable = t
-  })
-
-  const rows = targetTable ? $(targetTable).find('tr') : $('table tr')
-
-  rows.each((_, row) => {
-    const cells = $(row).find('td')
-    if (cells.length < 17) return
-
-    const ong      = $(cells[1]).text().trim()
-    const numFormul = $(cells[2]).text().trim()
-    if (!numFormul || !numFormul.match(/^\d+-\d+$/)) return
-    if (!ong || ong === 'ONG') return
-
-    // Log raw HTML of first data row to reveal onclick/href URL patterns
-    if (!rowSample) {
-      rowSample = $(row).html()?.substring(0, 600) || ''
-      console.log(`[row-sample] ${rowSample}`)
-    }
-
-    const detailUrl   = extractDetailUrl($, row, cells)
-    const donante      = $(cells[3]).text().trim()
-    const llamada      = $(cells[4]).text().trim().toLowerCase() === 'si'
-    const tipoSocio    = $(cells[5]).text().trim()
-    const pdfContrato  = $(cells[6]).text().trim().toLowerCase() === 'si'
-    const intentos     = parseInt($(cells[8]).text().trim()) || 0
-    const cuota        = parseFloat($(cells[9]).text().trim().replace(',', '.')) || null
-    const periodicidad = $(cells[10]).text().trim()
-    const fFirma       = parseDate($(cells[11]).text().trim())
-    const fEntrega     = parseDate($(cells[12]).text().trim())
-    const fAlta        = parseDate($(cells[13]).text().trim())
-    const fOkKo        = parseDate($(cells[14]).text().trim())
-    const otraFCobro   = parseDate($(cells[15]).text().trim())
-    const estado       = $(cells[16]).text().trim()
-    const comentCapt   = cells[17] ? $(cells[17]).text().trim() : null
-    const comentCall   = cells[18] ? $(cells[18]).text().trim() : null
-
-    const parts = donante.trim().split(/\s+/)
-    socios.push({
-      num_formulario: numFormul,
-      detail_url: detailUrl || null,
-      ong: ong || null,
-      nombre:    parts[0] || '',
-      apellido1: parts[1] || '',
-      apellido2: parts.slice(2).join(' ') || '',
-      llamada, tipo_socio: tipoSocio || null, pdf_contrato: pdfContrato,
-      num_intentos_rellamada: intentos, cuota, periodicidad: periodicidad || null,
-      fecha_firma: fFirma, fecha_entrega: fEntrega, fecha_alta: fAlta,
-      fecha_okko: fOkKo, otra_fecha_cobro: otraFCobro,
-      estado: estado || null,
-      comentarios_captador: comentCapt || null,
-      comentarios_call:     comentCall || null,
-    })
-  })
-
-  return socios
-}
-
-// Try to get numdir (birth date) and sexo from the topf2f form detail page.
-// topf2f stores birth date in input[name="numdir"] as DD/MM/YYYY.
-// Uses detailUrl extracted from the production table row first; falls back to candidate patterns.
-async function fetchFormDetail(cookies, numFormulario, detailUrl) {
-  const formId = numFormulario.split('-')[1] || numFormulario
-
-  // URL candidates — detailUrl from row onclick/href goes first if found
-  const candidates = [
-    ...(detailUrl ? [detailUrl] : []),
-    `${BASE_URL}/cc_fichasnew.php?id=${formId}`,
-    `${BASE_URL}/cc_fichasnew.php?num=${numFormulario}`,
-    `${BASE_URL}/cc_fichasnew.php?formulario=${numFormulario}`,
-    `${BASE_URL}/comercial_fichadetalle.php?id=${formId}`,
-    `${BASE_URL}/comercial_fichadetalle.php?num=${numFormulario}`,
-  ]
-
-  for (const url of candidates) {
-    try {
-      const res = await fetch(url, {
-        headers: commonHeaders(cookies),
-        signal: AbortSignal.timeout(4000)
-      })
-      const status = res.status
-      if (!res.ok) { console.log(`[detail] ${status} ${url}`); continue }
-      const html = await res.text()
-      if (html.includes('login.php') || html.includes('usuarios/login')) {
-        console.log(`[detail] redirect-to-login ${url}`)
-        continue
-      }
-
-      const $ = cheerio.load(html)
-      const numdir = $('input[name="numdir"]').val()?.trim() || null
-      const sppgas = $('select[name="sppgas"] option[selected]').val()?.trim()
-                  || $('input[name="sppgas"]:checked').val()?.trim()
-                  || null
-      const sexo = sppgas === '1' ? 'Hombre' : sppgas === '2' ? 'Mujer' : null
-
-      console.log(`[detail] ${status} ${url} → numdir=${numdir || 'null'} inputs=${$('input').length}`)
-      if (numdir) return { fecha_nacimiento: parseDate(numdir), sexo }
-    } catch (e) {
-      console.log(`[detail] error ${url}: ${e.message}`)
-    }
-  }
-  return null
-}
+import { loginTopF2F, fetchIndivHtml, discoverTeamUrl, fetchTeamHtml, parseProductionTable } from './_lib/topf2f.js'
 
 export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
@@ -215,8 +20,21 @@ export default async function handler(req, res) {
 
     const topf2f_pass = Buffer.from(user.topf2f_pass, 'base64').toString('utf8')
     const cookies = await loginTopF2F(user.topf2f_user, topf2f_pass)
-    const html    = await fetchProduccion(cookies)
-    const socios  = parseProductionTable(html)
+
+    // Try team production first (gives captador, NIF, fecha_nacimiento)
+    const indivHtml = await fetchIndivHtml(cookies)
+    const teamUrl   = discoverTeamUrl(indivHtml)
+    console.log(`[sync] teamUrl=${teamUrl || 'none'}`)
+
+    let html = indivHtml
+    let hasTeam = false
+    if (teamUrl) {
+      const teamHtml = await fetchTeamHtml(cookies, teamUrl)
+      if (teamHtml) { html = teamHtml; hasTeam = true }
+    }
+
+    const socios = parseProductionTable(html)
+    console.log(`[sync] parsed=${socios.length} hasTeam=${hasTeam}`)
 
     if (socios.length === 0) {
       const tableCount = (html.match(/<table/gi) || []).length
@@ -228,58 +46,60 @@ export default async function handler(req, res) {
       })
     }
 
-    // ── 1. Bulk-fetch existing records ──────────────────────────────────────
+    // Build captador name → CRM user ID map
+    const { data: captUsers } = await supabase
+      .from('users')
+      .select('id, topf2f_captador_nombre')
+      .not('topf2f_captador_nombre', 'is', null)
+
+    const captadorMap = {}
+    for (const u of captUsers || [])
+      if (u.topf2f_captador_nombre)
+        captadorMap[u.topf2f_captador_nombre.toLowerCase().trim()] = u.id
+
+    // Bulk-fetch existing records to preserve data not in current sync
     const numFormularios = socios.map(s => s.num_formulario)
     const { data: existingRows } = await supabase
       .from('socios')
-      .select('num_formulario, fecha_nacimiento, sexo')
+      .select('num_formulario, fecha_nacimiento, sexo, captador_id, nif')
       .in('num_formulario', numFormularios)
 
     const existingMap = {}
     for (const row of existingRows || []) existingMap[row.num_formulario] = row
     const existingNums = new Set(Object.keys(existingMap))
 
-    // ── 2. Try to fetch birth dates from topf2f detail pages ─────────────
-    // Only for socios that don't yet have a birth date in our DB.
-    // Uses cc_fichasnew.php?id=<FORM_ID> with the sync's own authenticated session.
-    // Limit to 5 in parallel per sync call to stay well within the 60s timeout.
-    const noDate = socios
-      .filter(s => !existingMap[s.num_formulario]?.fecha_nacimiento)
-      .slice(0, 5)
-
-    let enriched = 0
-    if (noDate.length > 0) {
-      await Promise.all(noDate.map(async s => {
-        const detail = await fetchFormDetail(cookies, s.num_formulario, s.detail_url)
-        if (detail?.fecha_nacimiento) { s.fecha_nacimiento = detail.fecha_nacimiento; enriched++ }
-        if (detail?.sexo && !s.sexo)  { s.sexo = detail.sexo }
-      }))
-    }
-
-    // ── 3. Build records, preserving any existing fecha_nacimiento ────────
+    // Build records
     const records = socios.map(s => {
       const ex = existingMap[s.num_formulario]
-      const { detail_url, ...rest } = s
+      const captadorId =
+        (s.captador_nombre && captadorMap[s.captador_nombre.toLowerCase().trim()]) ||
+        ex?.captador_id ||
+        null
+
+      const { captador_nombre, ...rest } = s
       return {
         ...rest,
-        captador_id: claim.id,
+        captador_id: captadorId,
         last_sync: new Date().toISOString(),
         fecha_nacimiento: s.fecha_nacimiento || ex?.fecha_nacimiento || null,
         sexo: s.sexo || ex?.sexo || null,
+        nif: s.nif || ex?.nif || null,
       }
     })
 
     const newCount     = records.filter(r => !existingNums.has(r.num_formulario)).length
     const updatedCount = records.length - newCount
 
-    // ── 4. Single bulk upsert (replaces N+N individual queries) ──────────
     const { error: upsertErr } = await supabase
       .from('socios')
       .upsert(records, { onConflict: 'num_formulario' })
     if (upsertErr) throw new Error('Upsert error: ' + upsertErr.message)
 
     const debugParts = []
-    if (enriched > 0) debugParts.push(`${enriched} fechas nacimiento`)
+    if (hasTeam) debugParts.push('producción de equipo')
+    const newlyLinked = records.filter(r => r.captador_id && !existingMap[r.num_formulario]?.captador_id).length
+    if (newlyLinked > 0) debugParts.push(`${newlyLinked} enlazados`)
+
     return res.status(200).json({
       ok: true, new: newCount, updated: updatedCount, total: socios.length,
       ...(debugParts.length ? { debug: debugParts.join(' · ') } : {})

@@ -14,28 +14,31 @@ export default async function handler(req, res) {
     const { id } = req.query
     const supabase = db()
 
-    // PUT — update
     if (req.method === 'PUT') {
-      const { username, password, nombre, apellidos, role, topf2f_user, topf2f_pass, parent_id, activo } = req.body
+      const { username, password, nombre, apellidos, role, topf2f_user, topf2f_pass, topf2f_captador_nombre, parent_id, activo } = req.body
+      const isRoot = !!topf2f_user?.trim()
+
       const updates = {
-        username: username?.trim().toLowerCase(),
-        nombre: nombre?.trim(),
-        apellidos: apellidos?.trim() || null,
-        role: Number(role) || 1,
-        topf2f_user: topf2f_user?.trim() || null,
-        parent_id: parent_id || null,
-        activo: activo !== false,
-        updated_at: new Date().toISOString()
+        username:               username?.trim().toLowerCase(),
+        nombre:                 nombre?.trim(),
+        apellidos:              apellidos?.trim() || null,
+        role:                   Number(role) || 1,
+        topf2f_user:            isRoot ? topf2f_user.trim() : null,
+        topf2f_captador_nombre: !isRoot ? topf2f_captador_nombre?.trim() || null : null,
+        parent_id:              parent_id || null,
+        activo:                 activo !== false,
+        updated_at:             new Date().toISOString()
       }
+
       if (password) updates.password_hash = await bcrypt.hash(password, 12)
-      if (topf2f_pass) updates.topf2f_pass = Buffer.from(topf2f_pass).toString('base64')
+      if (isRoot && topf2f_pass) updates.topf2f_pass = Buffer.from(topf2f_pass).toString('base64')
+      if (!isRoot) updates.topf2f_pass = null
 
       const { error } = await supabase.from('users').update(updates).eq('id', id)
       if (error) return res.status(400).json({ error: error.message })
       return res.status(200).json({ ok: true })
     }
 
-    // DELETE
     if (req.method === 'DELETE') {
       await supabase.from('users').update({ parent_id: null }).eq('parent_id', id)
       const { error } = await supabase.from('users').delete().eq('id', id)
