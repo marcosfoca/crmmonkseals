@@ -200,15 +200,15 @@ export function parseProductionTable(html) {
     const ong = cell($, cells, colMap.ong)
     if (!ong || ong.toUpperCase() === 'ONG') return
 
-    if (!loggedSample) {
-      loggedSample = true
-      console.log(`[parse] first-data-row="${texts.slice(0,10).join('|')}"`)
-    }
-
     const donante        = cell($, cells, colMap.donante)
     const captadorNombre = colMap.captador !== undefined ? cell($, cells, colMap.captador) || null : null
     const nif            = colMap.nif !== undefined ? cell($, cells, colMap.nif) || null : null
     const fechaNacRaw    = colMap.fechaNacimiento !== undefined ? cell($, cells, colMap.fechaNacimiento) : null
+
+    if (!loggedSample) {
+      loggedSample = true
+      console.log(`[row0] num=${numFormulario} ong=${ong} don=${donante} nac="${fechaNacRaw}" cap="${captadorNombre}" nif="${nif}"`)
+    }
     const sexoRaw        = colMap.sexo !== undefined ? cell($, cells, colMap.sexo) : null
 
     const llamada        = cell($, cells, colMap.llamada).toLowerCase() === 'si'
