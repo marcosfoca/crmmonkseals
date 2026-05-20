@@ -170,6 +170,7 @@ export function parseProductionTable(html) {
   const rows = targetTable ? $(targetTable).find('tr') : $('table tr')
   let colMap = null
   let loggedSample = false
+  let colOffset = null  // null = not yet detected; accounts for leading checkbox column in data rows
 
   rows.each((_, row) => {
     const cells = $(row).find('td, th')
@@ -187,37 +188,52 @@ export function parseProductionTable(html) {
     }
     if (!colMap) return
 
-    const numFormulario = cell($, cells, colMap.numFormulario)
+    // Auto-detect leading-column offset (data rows sometimes have an extra leading checkbox cell)
+    if (colOffset === null) {
+      const n0 = cell($, cells, colMap.numFormulario)
+      if (n0 && /^\d+/.test(n0)) {
+        colOffset = 0
+      } else {
+        const n1 = cell($, cells, colMap.numFormulario + 1)
+        colOffset = (n1 && /^\d+/.test(n1)) ? 1 : 0
+        if (colOffset) console.log('[offset] +1 leading column detected in data rows')
+      }
+    }
+
+    // Helper: get cell value using header-derived index + detected offset
+    const c = (idx) => idx !== undefined ? cell($, cells, idx + colOffset) : ''
+
+    const numFormulario = c(colMap.numFormulario)
     if (!numFormulario || !/^\d+/.test(numFormulario)) return
 
-    const ong = cell($, cells, colMap.ong)
+    const ong = c(colMap.ong)
     if (!ong || ong.toUpperCase() === 'ONG') return
 
-    const donante        = cell($, cells, colMap.donante)
-    const captadorNombre = colMap.captador !== undefined ? cell($, cells, colMap.captador) || null : null
-    const nif            = colMap.nif !== undefined ? cell($, cells, colMap.nif) || null : null
-    const fechaNacRaw    = colMap.fechaNacimiento !== undefined ? cell($, cells, colMap.fechaNacimiento) : null
+    const donante        = c(colMap.donante)
+    const captadorNombre = colMap.captador !== undefined ? c(colMap.captador) || null : null
+    const nif            = colMap.nif !== undefined ? c(colMap.nif) || null : null
+    const fechaNacRaw    = colMap.fechaNacimiento !== undefined ? c(colMap.fechaNacimiento) : null
 
     if (!loggedSample) {
       loggedSample = true
-      console.log(`[row0] num=${numFormulario} ong=${ong} don=${donante} nac="${fechaNacRaw}" cap="${captadorNombre}" nif="${nif}"`)
+      console.log(`[row0] off=${colOffset} num=${numFormulario} ong=${ong} don=${donante} nac="${fechaNacRaw}" cap="${captadorNombre}" nif="${nif}"`)
     }
-    const sexoRaw        = colMap.sexo !== undefined ? cell($, cells, colMap.sexo) : null
+    const sexoRaw        = colMap.sexo !== undefined ? c(colMap.sexo) : null
 
-    const llamada        = cell($, cells, colMap.llamada).toLowerCase() === 'si'
-    const tipoSocio      = cell($, cells, colMap.tipoSocio) || null
-    const pdfContrato    = cell($, cells, colMap.pdf).toLowerCase() === 'si'
-    const intentos       = parseInt(cell($, cells, colMap.intentos)) || 0
-    const cuota          = parseFloat(cell($, cells, colMap.cuota).replace(',', '.')) || null
-    const periodicidad   = cell($, cells, colMap.periodicidad) || null
-    const fFirma         = parseDate(cell($, cells, colMap.fFirma))
-    const fEntrega       = parseDate(cell($, cells, colMap.fEntrega))
-    const fAlta          = parseDate(cell($, cells, colMap.fAlta))
-    const fOkKo          = parseDate(cell($, cells, colMap.fOkKo))
-    const otraFCobro     = parseDate(cell($, cells, colMap.otraFecha))
-    const estado         = cell($, cells, colMap.estado) || null
-    const comentCapt     = cell($, cells, colMap.comentCapt) || null
-    const comentCall     = cell($, cells, colMap.comentCall) || null
+    const llamada        = c(colMap.llamada).toLowerCase() === 'si'
+    const tipoSocio      = c(colMap.tipoSocio) || null
+    const pdfContrato    = c(colMap.pdf).toLowerCase() === 'si'
+    const intentos       = parseInt(c(colMap.intentos)) || 0
+    const cuota          = parseFloat(c(colMap.cuota).replace(',', '.')) || null
+    const periodicidad   = c(colMap.periodicidad) || null
+    const fFirma         = parseDate(c(colMap.fFirma))
+    const fEntrega       = parseDate(c(colMap.fEntrega))
+    const fAlta          = parseDate(c(colMap.fAlta))
+    const fOkKo          = parseDate(c(colMap.fOkKo))
+    const otraFCobro     = parseDate(c(colMap.otraFecha))
+    const estado         = c(colMap.estado) || null
+    const comentCapt     = c(colMap.comentCapt) || null
+    const comentCall     = c(colMap.comentCall) || null
 
     // Normalise sexo
     let sexo = null
