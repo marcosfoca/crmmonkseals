@@ -126,30 +126,47 @@ function parseProductionTable(html) {
 
 // Try to get numdir (birth date) and sexo from the topf2f form detail page.
 // topf2f stores birth date in input[name="numdir"] as DD/MM/YYYY.
-// The detail page is cc_fichasnew.php?id=<FORM_ID> — uses the sync's own auth session.
-async function fetchFormDetail(cookies, formId) {
-  const url = `${BASE_URL}/cc_fichasnew.php?id=${formId}`
-  try {
-    const res = await fetch(url, {
-      headers: commonHeaders(cookies),
-      signal: AbortSignal.timeout(5000)
-    })
-    if (!res.ok) return null
-    const html = await res.text()
-    // If redirected to login, this page requires different access
-    if (html.includes('login.php') || html.includes('usuarios/login')) return null
+// Tries several URL patterns since we don't know the exact detail URL structure.
+async function fetchFormDetail(cookies, numFormulario) {
+  const formId = numFormulario.split('-')[1] || numFormulario
 
-    const $ = cheerio.load(html)
-    const numdir = $('input[name="numdir"]').val()?.trim() || null
-    const sppgas = $('select[name="sppgas"] option[selected]').val()?.trim()
-               || $('input[name="sppgas"]:checked').val()?.trim()
-               || null
-    const sexo = sppgas === '1' ? 'Hombre' : sppgas === '2' ? 'Mujer' : null
+  // URL candidates — tried sequentially until one returns numdir
+  const candidates = [
+    `${BASE_URL}/cc_fichasnew.php?id=${formId}`,
+    `${BASE_URL}/cc_fichasnew.php?num=${numFormulario}`,
+    `${BASE_URL}/cc_fichasnew.php?formulario=${numFormulario}`,
+    `${BASE_URL}/comercial_fichadetalle.php?id=${formId}`,
+    `${BASE_URL}/comercial_fichadetalle.php?num=${numFormulario}`,
+  ]
 
-    return { fecha_nacimiento: parseDate(numdir), sexo }
-  } catch {
-    return null
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, {
+        headers: commonHeaders(cookies),
+        signal: AbortSignal.timeout(4000)
+      })
+      const status = res.status
+      if (!res.ok) { console.log(`[detail] ${status} ${url}`); continue }
+      const html = await res.text()
+      if (html.includes('login.php') || html.includes('usuarios/login')) {
+        console.log(`[detail] redirect-to-login ${url}`)
+        continue
+      }
+
+      const $ = cheerio.load(html)
+      const numdir = $('input[name="numdir"]').val()?.trim() || null
+      const sppgas = $('select[name="sppgas"] option[selected]').val()?.trim()
+                  || $('input[name="sppgas"]:checked').val()?.trim()
+                  || null
+      const sexo = sppgas === '1' ? 'Hombre' : sppgas === '2' ? 'Mujer' : null
+
+      console.log(`[detail] ${status} ${url} → numdir=${numdir || 'null'} inputs=${$('input').length}`)
+      if (numdir) return { fecha_nacimiento: parseDate(numdir), sexo }
+    } catch (e) {
+      console.log(`[detail] error ${url}: ${e.message}`)
+    }
   }
+  return null
 }
 
 export default async function handler(req, res) {
@@ -205,9 +222,7 @@ export default async function handler(req, res) {
     let enriched = 0
     if (noDate.length > 0) {
       await Promise.all(noDate.map(async s => {
-        const formId = s.num_formulario.split('-')[1]
-        if (!formId) return
-        const detail = await fetchFormDetail(cookies, formId)
+        const detail = await fetchFormDetail(cookies, s.num_formulario)
         if (detail?.fecha_nacimiento) { s.fecha_nacimiento = detail.fecha_nacimiento; enriched++ }
         if (detail?.sexo && !s.sexo)  { s.sexo = detail.sexo }
       }))
