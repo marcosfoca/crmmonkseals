@@ -33,7 +33,7 @@ export default async function handler(req, res) {
       if (teamHtml) { html = teamHtml; hasTeam = true }
     }
 
-    const socios = parseProductionTable(html)
+    const { socios } = parseProductionTable(html)
     console.log(`[sync] parsed=${socios.length} hasTeam=${hasTeam}`)
 
     if (socios.length === 0) {

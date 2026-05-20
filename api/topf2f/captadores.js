@@ -28,15 +28,14 @@ export default async function handler(req, res) {
       if (teamHtml) html = teamHtml
     }
 
-    const socios = parseProductionTable(html)
+    const { socios, debug: parseDebug } = parseProductionTable(html)
     const captadores = [...new Set(
       socios.map(s => s.captador_nombre).filter(Boolean).map(n => n.trim()).filter(Boolean)
     )].sort()
 
-    // Short diagnostic log — intentionally not truncated
     console.log(`[cap] teamUrl=${teamUrl||'none'} socios=${socios.length} sample=${JSON.stringify(captadores.slice(0,4))}`)
 
-    return res.status(200).json({ captadores, total_socios: socios.length })
+    return res.status(200).json({ captadores, total_socios: socios.length, _debug: parseDebug })
   } catch (err) {
     return res.status(500).json({ error: err.message })
   }

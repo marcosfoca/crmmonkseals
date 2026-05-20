@@ -66,7 +66,12 @@ export default function Admin() {
       const res = await apiFetch('/api/topf2f/captadores')
       if (!res) { setCaptLoad(false); return }
       const data = await res.json().catch(() => ({}))
-      if (res.ok) setCaptadores(data.captadores || [])
+      if (res.ok) {
+        setCaptadores(data.captadores || [])
+        console.log('[captadores] headers:', data._debug?.headers)
+        console.log('[captadores] colMap:', data._debug?.colMap)
+        console.log('[captadores] values:', data.captadores)
+      }
       else setCaptErr(data.error || 'Error al cargar captadores de topf2f')
     } catch (e) {
       setCaptErr('Error de red: ' + e.message)

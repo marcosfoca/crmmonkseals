@@ -107,9 +107,13 @@ function buildColMap(texts) {
   const t = texts.map(s => s.toLowerCase().trim())
   const col = {}
 
+  // Track captador-related columns separately to resolve ambiguity
+  let captadorNifIdx = undefined  // "nif captador", "dni captador" → contains document number
+  let captadorNombreIdx = undefined  // "nombre captador", plain "captador" (non-doc) → contains name
+
   t.forEach((v, i) => {
     if (v.includes('formulario'))                           col.numFormulario    = i
-    if (v === 'ong')                                        col.ong              = i
+    if (v === 'ong' || v === 'entidad' || v === 'organización') col.ong         = i
     if (v.includes('donante'))                              col.donante          = i
     if (v.includes('llamada'))                              col.llamada          = i
     if (v.includes('tipo') && v.includes('soc'))            col.tipoSocio        = i
@@ -125,13 +129,22 @@ function buildColMap(texts) {
     if (v.includes('ok') && v.includes('ko'))               col.fOkKo            = i
     if (v.includes('otra') && v.includes('fecha'))          col.otraFecha        = i
     if (v.includes('estado'))                               col.estado           = i
-    if (v.includes('captador'))                             col.captador         = i
     if (v.includes('nif') || v === 'dni' || v.includes('dni/') || (v.includes('doc') && !v.includes('donante')))
                                                             col.nif              = i
     if (v.includes('nac') || (v.includes('fecha') && v.includes('nac')))
                                                             col.fechaNacimiento  = i
     if (v.includes('sexo') || v === 'm/h' || v === 'h/m')  col.sexo             = i
+
+    // Captador: distinguish NIF-captador from name-captador
+    if (v.includes('captador') || v.includes('comercial') || v.includes('agente') || v.includes('promotor')) {
+      const isDoc = v.includes('nif') || v.includes('dni') || v.includes('doc') || v.includes('cif')
+      if (isDoc) captadorNifIdx = i
+      else captadorNombreIdx = i
+    }
   })
+
+  // Prefer name column over NIF column for captador matching
+  col.captador = captadorNombreIdx !== undefined ? captadorNombreIdx : captadorNifIdx
 
   // Comentarios: first two columns with "coment"
   const cIdx = t.map((v, i) => v.includes('coment') ? i : -1).filter(x => x >= 0)
@@ -146,10 +159,11 @@ function cell($, cells, idx) {
   return $(cells[idx]).text().trim()
 }
 
-// Dynamic column-aware parser. Returns array of socios with captador_nombre when available.
+// Dynamic column-aware parser. Returns { socios, debug } where debug has headers and colMap.
 export function parseProductionTable(html) {
   const $ = cheerio.load(html)
   const socios = []
+  let debugInfo = { headers: [], colMap: {} }
 
   let targetTable = null
   $('table').each((_, t) => {
@@ -170,6 +184,7 @@ export function parseProductionTable(html) {
     // Detect header row
     if (!colMap && texts.some(t => /formulario/i.test(t) || /donante/i.test(t))) {
       colMap = buildColMap(texts)
+      debugInfo = { headers: texts, colMap }
       console.log(`[hdr] ${texts.join('|')}`)
       console.log(`[col] cap=${colMap.captador} nif=${colMap.nif} nac=${colMap.fechaNacimiento}`)
       return
@@ -237,5 +252,5 @@ export function parseProductionTable(html) {
     })
   })
 
-  return socios
+  return { socios, debug: debugInfo }
 }
