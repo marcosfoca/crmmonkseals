@@ -67,9 +67,28 @@ function parseDate(str) {
 // 0:empty 1:ONG 2:NºFormulario 3:Donante 4:Llamada 5:TipoSocio 6:PDF
 // 7:Teléfono 8:NºIntentos 9:Cuota 10:Periodicidad
 // 11:FFirma 12:FEntrega 13:FAlta 14:FOkKo 15:OtraFecha 16:Estado 17:ComentCapt 18:ComentCall
+function extractDetailUrl($, row, cells) {
+  // Check row-level onclick (common in PHP CRMs: onclick="location.href='...'" or window.open)
+  const rowOnclick = $(row).attr('onclick') || ''
+  const m1 = rowOnclick.match(/(?:location\.href|window\.open)\s*[=(]['"]([^'"]+)['"]/)
+  if (m1) return m1[1].startsWith('http') ? m1[1] : BASE_URL + '/' + m1[1].replace(/^\//, '')
+
+  // Check all cells for href or onclick
+  for (let i = 0; i < cells.length; i++) {
+    const cell = $(cells[i])
+    const href = cell.find('a').attr('href')
+    if (href) return href.startsWith('http') ? href : BASE_URL + '/' + href.replace(/^\//, '')
+    const onclick = cell.attr('onclick') || cell.find('[onclick]').attr('onclick') || ''
+    const m2 = onclick.match(/(?:location\.href|window\.open|href)\s*[=(]['"]([^'"]+)['"]/)
+    if (m2) return m2[1].startsWith('http') ? m2[1] : BASE_URL + '/' + m2[1].replace(/^\//, '')
+  }
+  return null
+}
+
 function parseProductionTable(html) {
   const $ = cheerio.load(html)
   const socios = []
+  let rowSample = null
 
   let targetTable = null
   $('table').each((_, t) => {
@@ -88,6 +107,13 @@ function parseProductionTable(html) {
     if (!numFormul || !numFormul.match(/^\d+-\d+$/)) return
     if (!ong || ong === 'ONG') return
 
+    // Log raw HTML of first data row to reveal onclick/href URL patterns
+    if (!rowSample) {
+      rowSample = $(row).html()?.substring(0, 600) || ''
+      console.log(`[row-sample] ${rowSample}`)
+    }
+
+    const detailUrl   = extractDetailUrl($, row, cells)
     const donante      = $(cells[3]).text().trim()
     const llamada      = $(cells[4]).text().trim().toLowerCase() === 'si'
     const tipoSocio    = $(cells[5]).text().trim()
@@ -107,6 +133,7 @@ function parseProductionTable(html) {
     const parts = donante.trim().split(/\s+/)
     socios.push({
       num_formulario: numFormul,
+      detail_url: detailUrl || null,
       ong: ong || null,
       nombre:    parts[0] || '',
       apellido1: parts[1] || '',
@@ -126,12 +153,13 @@ function parseProductionTable(html) {
 
 // Try to get numdir (birth date) and sexo from the topf2f form detail page.
 // topf2f stores birth date in input[name="numdir"] as DD/MM/YYYY.
-// Tries several URL patterns since we don't know the exact detail URL structure.
-async function fetchFormDetail(cookies, numFormulario) {
+// Uses detailUrl extracted from the production table row first; falls back to candidate patterns.
+async function fetchFormDetail(cookies, numFormulario, detailUrl) {
   const formId = numFormulario.split('-')[1] || numFormulario
 
-  // URL candidates — tried sequentially until one returns numdir
+  // URL candidates — detailUrl from row onclick/href goes first if found
   const candidates = [
+    ...(detailUrl ? [detailUrl] : []),
     `${BASE_URL}/cc_fichasnew.php?id=${formId}`,
     `${BASE_URL}/cc_fichasnew.php?num=${numFormulario}`,
     `${BASE_URL}/cc_fichasnew.php?formulario=${numFormulario}`,
@@ -222,7 +250,7 @@ export default async function handler(req, res) {
     let enriched = 0
     if (noDate.length > 0) {
       await Promise.all(noDate.map(async s => {
-        const detail = await fetchFormDetail(cookies, s.num_formulario)
+        const detail = await fetchFormDetail(cookies, s.num_formulario, s.detail_url)
         if (detail?.fecha_nacimiento) { s.fecha_nacimiento = detail.fecha_nacimiento; enriched++ }
         if (detail?.sexo && !s.sexo)  { s.sexo = detail.sexo }
       }))
@@ -231,8 +259,9 @@ export default async function handler(req, res) {
     // ── 3. Build records, preserving any existing fecha_nacimiento ────────
     const records = socios.map(s => {
       const ex = existingMap[s.num_formulario]
+      const { detail_url, ...rest } = s
       return {
-        ...s,
+        ...rest,
         captador_id: claim.id,
         last_sync: new Date().toISOString(),
         fecha_nacimiento: s.fecha_nacimiento || ex?.fecha_nacimiento || null,
