@@ -170,7 +170,8 @@ export function parseProductionTable(html) {
     // Detect header row
     if (!colMap && texts.some(t => /formulario/i.test(t) || /donante/i.test(t))) {
       colMap = buildColMap(texts)
-      console.log(`[parse] colMap=${JSON.stringify(colMap)} headers="${texts.slice(0,10).join('|')}"`)
+      console.log(`[hdr] ${texts.join('|')}`)
+      console.log(`[col] cap=${colMap.captador} nif=${colMap.nif} nac=${colMap.fechaNacimiento}`)
       return
     }
     if (!colMap) return
