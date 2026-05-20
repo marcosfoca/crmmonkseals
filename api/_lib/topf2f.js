@@ -112,30 +112,33 @@ function buildColMap(texts) {
   let captadorNombreIdx = undefined  // "nombre captador", plain "captador" (non-doc) → contains name
 
   t.forEach((v, i) => {
-    if (v.includes('formulario'))                           col.numFormulario    = i
-    if (v === 'ong' || v === 'entidad' || v === 'organización') col.ong         = i
-    if (v.includes('donante'))                              col.donante          = i
-    if (v.includes('llamada'))                              col.llamada          = i
-    if (v.includes('tipo') && v.includes('soc'))            col.tipoSocio        = i
-    if (v === 'pdf')                                        col.pdf              = i
+    if (v.includes('formulario'))                              col.numFormulario   = i
+    if (v === 'ong' || v === 'entidad' || v === 'organización') col.ong           = i
+    if (v.includes('donante'))                                 col.donante         = i
+    // Exact match for "llamada" to avoid overwrite by "Estado llamada"
+    if (v === 'llamada')                                       col.llamada         = i
+    if (v.includes('tipo') && v.includes('soc'))               col.tipoSocio       = i
+    if (v.includes('pdf'))                                     col.pdf             = i
     if (v.startsWith('tel') || v.startsWith('tfno') || v.startsWith('móvil') || v.startsWith('movil') || v.startsWith('tlf'))
-                                                            col.telefono         = i
-    if (v.includes('intent'))                               col.intentos         = i
-    if (v.includes('cuota') && !v.includes('otra'))         col.cuota            = i
-    if (v.includes('period'))                               col.periodicidad     = i
-    if (v.includes('firma') && !v.includes('entrega'))      col.fFirma           = i
-    if (v.includes('entrega'))                              col.fEntrega         = i
-    if (v.includes('alta'))                                 col.fAlta            = i
-    if (v.includes('ok') && v.includes('ko'))               col.fOkKo            = i
-    if (v.includes('otra') && v.includes('fecha'))          col.otraFecha        = i
-    if (v.includes('estado'))                               col.estado           = i
+                                                               col.telefono        = i
+    if (v.includes('intent'))                                  col.intentos        = i
+    if (v.includes('cuota') && !v.includes('otra'))            col.cuota           = i
+    if (v.includes('period'))                                  col.periodicidad    = i
+    if (v.includes('firma') && !v.includes('entrega'))         col.fFirma          = i
+    if (v.includes('entrega'))                                 col.fEntrega        = i
+    if (v.includes('alta') && !v.includes('otra'))             col.fAlta           = i
+    if (v.includes('ok') && v.includes('ko'))                  col.fOkKo           = i
+    // "Otra F. cobro..." — requires 'otra', 'f.' shorthand, no 'fecha' needed
+    if (v.startsWith('otra'))                                  col.otraFecha       = i
+    // Exact "estado" avoids matching "Estado llamada"
+    if (v === 'estado')                                        col.estado          = i
     if (v.includes('nif') || v === 'dni' || v.includes('dni/') || (v.includes('doc') && !v.includes('donante')))
-                                                            col.nif              = i
+                                                               col.nif             = i
     if (v.includes('nac') || (v.includes('fecha') && v.includes('nac')))
-                                                            col.fechaNacimiento  = i
-    if (v.includes('sexo') || v === 'm/h' || v === 'h/m')  col.sexo             = i
+                                                               col.fechaNacimiento = i
+    if (v.includes('sexo') || v === 'm/h' || v === 'h/m')     col.sexo            = i
 
-    // Captador: distinguish NIF-captador from name-captador
+    // Captador: distinguish NIF-captador columns from name-captador columns
     if (v.includes('captador') || v.includes('comercial') || v.includes('agente') || v.includes('promotor')) {
       const isDoc = v.includes('nif') || v.includes('dni') || v.includes('doc') || v.includes('cif')
       if (isDoc) captadorNifIdx = i
@@ -192,7 +195,7 @@ export function parseProductionTable(html) {
     if (!colMap) return
 
     const numFormulario = cell($, cells, colMap.numFormulario)
-    if (!numFormulario || !/^\d+-\d+$/.test(numFormulario)) return
+    if (!numFormulario || !/^\d+/.test(numFormulario)) return
 
     const ong = cell($, cells, colMap.ong)
     if (!ong || ong.toUpperCase() === 'ONG') return
