@@ -6,6 +6,20 @@ const ROLE_OPTIONS = Object.entries(ROLE_LABELS)
   .filter(([k]) => Number(k) !== ROLES.ADMIN)
   .sort((a, b) => a[0] - b[0])
 
+function titleCase(str) {
+  return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+}
+
+// "MARCOS FORTIS CARRETERO" → { nombre: "Marcos", apellidos: "Fortis Carretero" }
+function parseCaptadorName(raw) {
+  if (!raw?.trim()) return { nombre: '', apellidos: '' }
+  const words = raw.trim().split(/\s+/)
+  return {
+    nombre:    titleCase(words[0] || ''),
+    apellidos: words.slice(1).map(titleCase).join(' '),
+  }
+}
+
 const ROLE_BADGE = {
   1: 'bg-gray-100 text-gray-700',
   2: 'bg-blue-100 text-blue-800',
@@ -82,12 +96,18 @@ export default function Admin() {
 
   function setField(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
+  function handleCaptadorSelect(raw) {
+    const { nombre, apellidos } = parseCaptadorName(raw)
+    setForm(f => ({ ...f, topf2f_captador_nombre: raw, nombre, apellidos }))
+  }
+
   function toggleRaiz(checked) {
     setForm(f => ({
       ...f,
       es_raiz: checked,
       topf2f_user: '', topf2f_pass: '',
       topf2f_captador_nombre: '',
+      nombre: '', apellidos: '',
     }))
     if (!checked) loadCaptadores()
   }
@@ -162,7 +182,7 @@ export default function Admin() {
                       <div className="text-xs text-gray-400">topf2f raíz: {u.topf2f_user}</div>
                     )}
                     {u.topf2f_captador_nombre && (
-                      <div className="text-xs text-gray-400">captador: {u.topf2f_captador_nombre}</div>
+                      <div className="text-xs text-gray-400">{titleCase(u.topf2f_captador_nombre)}</div>
                     )}
                   </div>
                   <div className="flex gap-1 shrink-0">
@@ -197,7 +217,7 @@ export default function Admin() {
                   const topfLabel = u.topf2f_user
                     ? `raíz: ${u.topf2f_user}`
                     : u.topf2f_captador_nombre
-                    ? `captador: ${u.topf2f_captador_nombre}`
+                    ? titleCase(u.topf2f_captador_nombre)
                     : '—'
                   return (
                     <tr key={u.id} className="hover:bg-gray-50">
@@ -257,19 +277,21 @@ export default function Admin() {
             </div>
 
             <div className="px-5 py-4 flex flex-col gap-4">
-              {/* Nombre + Apellidos */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Nombre *</label>
-                  <input className="input" value={form.nombre}
-                    onChange={e => setField('nombre', e.target.value)}/>
+              {/* Nombre + Apellidos — only shown for root/manual users */}
+              {form.es_raiz && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Nombre *</label>
+                    <input className="input" value={form.nombre}
+                      onChange={e => setField('nombre', e.target.value)}/>
+                  </div>
+                  <div>
+                    <label className="label">Apellidos</label>
+                    <input className="input" value={form.apellidos}
+                      onChange={e => setField('apellidos', e.target.value)}/>
+                  </div>
                 </div>
-                <div>
-                  <label className="label">Apellidos</label>
-                  <input className="input" value={form.apellidos}
-                    onChange={e => setField('apellidos', e.target.value)}/>
-                </div>
-              </div>
+              )}
 
               {/* Usuario + Contraseña */}
               <div className="grid grid-cols-2 gap-3">
@@ -358,7 +380,7 @@ export default function Admin() {
                       <p className="text-xs text-red-500 mb-1">{captErr}</p>
                     )}
                     <select className="input" value={form.topf2f_captador_nombre}
-                      onChange={e => setField('topf2f_captador_nombre', e.target.value)}
+                      onChange={e => handleCaptadorSelect(e.target.value)}
                       disabled={captLoad}>
                       <option value="">— Sin enlazar —</option>
                       {captLoad && <option disabled>Cargando de topf2f…</option>}
@@ -366,9 +388,16 @@ export default function Admin() {
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Selecciona a qué captador de la producción de equipo corresponde este usuario.
-                    </p>
+                    {form.topf2f_captador_nombre && form.nombre && (
+                      <p className="text-sm font-medium text-gray-700 mt-1.5">
+                        {form.nombre} {form.apellidos}
+                      </p>
+                    )}
+                    {!form.topf2f_captador_nombre && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        El nombre se tomará del captador seleccionado.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
