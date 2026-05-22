@@ -132,7 +132,7 @@ function buildColMap(texts) {
     if (v.includes('sexo') || v === 'm/h' || v === 'h/m')     col.sexo            = i
 
     // Captador: distinguish NIF-captador columns from name-captador columns
-    if (v.includes('captador') || v.includes('comercial') || v.includes('agente') || v.includes('promotor')) {
+    if ((v.includes('captador') || v.includes('comercial') || v.includes('agente') || v.includes('promotor')) && !v.includes('coment')) {
       const isDoc = v.includes('nif') || v.includes('dni') || v.includes('doc') || v.includes('cif')
       if (isDoc) captadorNifIdx = i
       else captadorNombreIdx = i
