@@ -5,7 +5,7 @@ export const PROD_URL  = 'https://comercial.topf2f.com/comercial_produccion.php'
 export const BASE_URL  = 'https://comercial.topf2f.com'
 
 const PROD_BODY = new URLSearchParams({
-  fechainicio: '2020-01-01', fechafin: '2030-12-31',
+  fechainicio: '2000-01-01', fechafin: '2030-12-31',
   filtrofecha: '0', estadobo: '0',
   SI_A: 'Si. Esta es la consulta que quiero hacer.'
 }).toString()
