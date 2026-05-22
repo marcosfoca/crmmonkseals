@@ -192,7 +192,7 @@ export function parseProductionTable(html) {
     // Log first 8 raw rows after header for debugging
     rowsAfterHeader++
     if (rowsAfterHeader <= 8) {
-      debugInfo._rows.push({ len: texts.length, cells: texts.slice(0, 6) })
+      debugInfo._rows.push({ len: texts.length, cells: texts.slice(0, 13) })
     }
 
     // Auto-detect leading-column offset (data rows sometimes have an extra leading checkbox cell)

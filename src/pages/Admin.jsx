@@ -71,6 +71,7 @@ export default function Admin() {
         console.log('[captadores] headers:', data._debug?.headers)
         console.log('[captadores] colMap:', data._debug?.colMap)
         console.log('[captadores] values:', data.captadores)
+        console.log('[captadores] total_socios:', data.total_socios)
         console.log('[captadores] _rows:', JSON.stringify(data._debug?._rows))
       }
       else setCaptErr(data.error || 'Error al cargar captadores de topf2f')
