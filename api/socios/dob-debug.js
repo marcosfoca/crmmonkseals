@@ -47,15 +47,14 @@ export default async function handler(req, res) {
 
     if (!teamUrl) return res.status(200).json({ error: 'No se encontró URL de equipo' })
 
-    // Try different estadobo values to find which returns all socios
+    // Try different filtrofecha values (estadobo fixed to '0')
     const variants = [
-      { estadobo: '0' },
-      { estadobo: '' },
-      { estadobo: 'TODOS' },
-      { estadobo: 'todos' },
-      { estadobo: '1' },
-      { estadobo: '2' },
-      {},  // no estadobo at all
+      { estadobo: '0', filtrofecha: '0' },
+      { estadobo: '0', filtrofecha: '1' },
+      { estadobo: '0', filtrofecha: '2' },
+      { estadobo: '0', filtrofecha: '3' },
+      { estadobo: '0', filtrofecha: '' },
+      { estadobo: '0' },  // no filtrofecha
     ]
 
     const results = []
