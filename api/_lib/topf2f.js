@@ -159,7 +159,7 @@ function cell($, cells, idx) {
 export function parseProductionTable(html) {
   const $ = cheerio.load(html)
   const socios = []
-  let debugInfo = { headers: [], colMap: {}, _rows: [] }
+  let debugInfo = { headers: [], colMap: {} }
 
   let targetTable = null
   $('table').each((_, t) => {
@@ -169,9 +169,9 @@ export function parseProductionTable(html) {
 
   const rows = targetTable ? $(targetTable).find('tr') : $('table tr')
   let colMap = null
-  let loggedSample = false
   let colOffset = null  // null = not yet detected; accounts for leading checkbox column in data rows
-  let rowsAfterHeader = 0
+  let phoneColIdx = -1  // index in data row of hidden phone column (-1 = none)
+  let phoneColDetected = false
 
   rows.each((_, row) => {
     const cells = $(row).find('td, th')
@@ -182,18 +182,10 @@ export function parseProductionTable(html) {
     // Detect header row
     if (!colMap && texts.some(t => /formulario/i.test(t) || /donante/i.test(t))) {
       colMap = buildColMap(texts)
-      debugInfo = { headers: texts, colMap, _rows: [] }
-      console.log(`[hdr] ${texts.join('|')}`)
-      console.log(`[col] cap=${colMap.captador} nif=${colMap.nif} nac=${colMap.fechaNacimiento}`)
+      debugInfo = { headers: texts, colMap }
       return
     }
     if (!colMap) return
-
-    // Log first 8 raw rows after header for debugging
-    rowsAfterHeader++
-    if (rowsAfterHeader <= 8) {
-      debugInfo._rows.push({ len: texts.length, cells: texts.slice(0, 13) })
-    }
 
     // Auto-detect leading-column offset (data rows sometimes have an extra leading checkbox cell)
     if (colOffset === null) {
@@ -203,14 +195,27 @@ export function parseProductionTable(html) {
         colOffset = 0
       } else if (n1 && /^\d+/.test(n1)) {
         colOffset = 1
-        console.log('[offset] +1 leading column detected in data rows')
       } else {
         return  // blank/summary row — keep colOffset=null, try next row
       }
     }
 
-    // Helper: get cell value using header-derived index + detected offset
-    const c = (idx) => idx !== undefined ? cell($, cells, idx + colOffset) : ''
+    // Detect hidden phone column: a 9-digit number where the header says "intentos"
+    if (!phoneColDetected && colMap.intentos !== undefined) {
+      const maybePhone = cell($, cells, colMap.intentos + colOffset)
+      if (/^\d{9}$/.test(maybePhone.replace(/\s/g, ''))) {
+        phoneColIdx = colMap.intentos + colOffset
+      }
+      phoneColDetected = true
+    }
+
+    // Helper: get cell value using header-derived index + detected offsets
+    // phoneColIdx shifts all columns from that point onwards by +1
+    const c = (idx) => {
+      if (idx === undefined) return ''
+      const di = idx + colOffset
+      return cell($, cells, di + (phoneColIdx >= 0 && di >= phoneColIdx ? 1 : 0))
+    }
 
     const numFormulario = c(colMap.numFormulario)
     if (!numFormulario || !/^\d+/.test(numFormulario)) return
@@ -222,12 +227,7 @@ export function parseProductionTable(html) {
     const captadorNombre = colMap.captador !== undefined ? c(colMap.captador) || null : null
     const nif            = colMap.nif !== undefined ? c(colMap.nif) || null : null
     const fechaNacRaw    = colMap.fechaNacimiento !== undefined ? c(colMap.fechaNacimiento) : null
-
-    if (!loggedSample) {
-      loggedSample = true
-      console.log(`[row0] off=${colOffset} num=${numFormulario} ong=${ong} don=${donante} nac="${fechaNacRaw}" cap="${captadorNombre}" nif="${nif}"`)
-    }
-    const sexoRaw        = colMap.sexo !== undefined ? c(colMap.sexo) : null
+    const sexoRaw = colMap.sexo !== undefined ? c(colMap.sexo) : null
 
     const llamada        = c(colMap.llamada).toLowerCase() === 'si'
     const tipoSocio      = c(colMap.tipoSocio) || null
