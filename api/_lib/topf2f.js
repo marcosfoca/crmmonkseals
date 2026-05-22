@@ -159,7 +159,7 @@ function cell($, cells, idx) {
 export function parseProductionTable(html) {
   const $ = cheerio.load(html)
   const socios = []
-  let debugInfo = { headers: [], colMap: {} }
+  let debugInfo = { headers: [], colMap: {}, _rows: [] }
 
   let targetTable = null
   $('table').each((_, t) => {
@@ -171,6 +171,7 @@ export function parseProductionTable(html) {
   let colMap = null
   let loggedSample = false
   let colOffset = null  // null = not yet detected; accounts for leading checkbox column in data rows
+  let rowsAfterHeader = 0
 
   rows.each((_, row) => {
     const cells = $(row).find('td, th')
@@ -181,12 +182,18 @@ export function parseProductionTable(html) {
     // Detect header row
     if (!colMap && texts.some(t => /formulario/i.test(t) || /donante/i.test(t))) {
       colMap = buildColMap(texts)
-      debugInfo = { headers: texts, colMap }
+      debugInfo = { headers: texts, colMap, _rows: [] }
       console.log(`[hdr] ${texts.join('|')}`)
       console.log(`[col] cap=${colMap.captador} nif=${colMap.nif} nac=${colMap.fechaNacimiento}`)
       return
     }
     if (!colMap) return
+
+    // Log first 8 raw rows after header for debugging
+    rowsAfterHeader++
+    if (rowsAfterHeader <= 8) {
+      debugInfo._rows.push({ len: texts.length, cells: texts.slice(0, 6) })
+    }
 
     // Auto-detect leading-column offset (data rows sometimes have an extra leading checkbox cell)
     if (colOffset === null) {
