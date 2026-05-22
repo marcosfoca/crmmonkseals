@@ -74,7 +74,7 @@ export default async function handler(req, res) {
       const captadorId =
         (s.captador_nombre && captadorMap[s.captador_nombre.toLowerCase().trim()]) ||
         ex?.captador_id ||
-        null
+        claim.id  // fallback: assign to the user who ran the sync
 
       const { captador_nombre, ...rest } = s
       return {
