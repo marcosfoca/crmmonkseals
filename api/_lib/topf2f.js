@@ -191,12 +191,14 @@ export function parseProductionTable(html) {
     // Auto-detect leading-column offset (data rows sometimes have an extra leading checkbox cell)
     if (colOffset === null) {
       const n0 = cell($, cells, colMap.numFormulario)
+      const n1 = cell($, cells, colMap.numFormulario + 1)
       if (n0 && /^\d+/.test(n0)) {
         colOffset = 0
+      } else if (n1 && /^\d+/.test(n1)) {
+        colOffset = 1
+        console.log('[offset] +1 leading column detected in data rows')
       } else {
-        const n1 = cell($, cells, colMap.numFormulario + 1)
-        colOffset = (n1 && /^\d+/.test(n1)) ? 1 : 0
-        if (colOffset) console.log('[offset] +1 leading column detected in data rows')
+        return  // blank/summary row — keep colOffset=null, try next row
       }
     }
 

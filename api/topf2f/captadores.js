@@ -4,6 +4,7 @@ import { loginTopF2F, fetchIndivHtml, discoverTeamUrl, fetchTeamHtml, parseProdu
 
 export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
+  res.setHeader('Cache-Control', 'no-store')
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
   const claim = authMiddleware(req)
