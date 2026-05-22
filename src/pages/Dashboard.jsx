@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { apiFetch, ROLE_LABELS } from '../lib/auth.js'
-import { Users, TrendingUp, Clock, CheckCircle, RefreshCw } from 'lucide-react'
+import { Users, Calendar, Flame, PhoneCall, RefreshCw } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
@@ -14,7 +14,7 @@ function StatCard({ icon: Icon, label, value, color = 'blue', sub }) {
   }
   return (
     <div className="card flex items-center gap-4">
-      <div className={`${colors[color]} rounded-xl p-3`}>
+      <div className={`${colors[color]} rounded-xl p-3 shrink-0`}>
         <Icon size={22}/>
       </div>
       <div>
@@ -62,6 +62,10 @@ export default function Dashboard() {
 
   const today = format(new Date(), "EEEE d 'de' MMMM", { locale: es })
 
+  const rachaLabel = stats?.racha
+    ? `${stats.racha} día${stats.racha !== 1 ? 's' : ''} seguido${stats.racha !== 1 ? 's' : ''}`
+    : '0'
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -90,11 +94,31 @@ export default function Dashboard() {
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard icon={Users}       label="Total socios"     value={stats?.total}      color="blue" />
-        <StatCard icon={CheckCircle} label="Socios OK"        value={stats?.socios_ok}  color="green" />
-        <StatCard icon={Clock}       label="En proceso"       value={stats?.en_proceso} color="gray" />
-        <StatCard icon={TrendingUp}  label="Este mes"         value={stats?.este_mes}   color="blue"
-          sub={stats?.cuota_media ? `${stats.cuota_media}€ cuota media` : null}/>
+        <StatCard
+          icon={Users}
+          label="Total socios"
+          value={stats?.total}
+          color="blue"
+        />
+        <StatCard
+          icon={Calendar}
+          label="Últimos 30 días"
+          value={stats?.ultimos_30}
+          color="green"
+        />
+        <StatCard
+          icon={Flame}
+          label="Racha actual"
+          value={rachaLabel}
+          color="red"
+        />
+        <StatCard
+          icon={PhoneCall}
+          label="Llamada OK (30d)"
+          value={stats?.llamada_pct_30 != null ? `${stats.llamada_pct_30}%` : '—'}
+          color="blue"
+          sub={stats?.cuota_media ? `${stats.cuota_media}€ cuota media` : null}
+        />
       </div>
 
       {/* My info */}

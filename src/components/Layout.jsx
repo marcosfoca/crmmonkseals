@@ -3,7 +3,7 @@ import { useAuth } from '../hooks/useAuth.jsx'
 import { ROLES, ROLE_LABELS } from '../lib/auth.js'
 import {
   LayoutDashboard, Users, BarChart2, UserPlus,
-  Settings, LogOut, Menu, X, Scan
+  Settings, LogOut, Menu, X
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -67,10 +67,6 @@ export default function Layout() {
         </nav>
 
         <div className="ml-auto flex items-center gap-3">
-          <a href="/scanner" target="_blank"
-            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/10 transition-colors">
-            <Scan size={15}/>Scanner
-          </a>
           <div className="hidden md:block text-right">
             <div className="text-xs font-semibold leading-tight">{user?.nombre}</div>
             <div className="text-xs text-white/50">{ROLE_LABELS[user?.role]}</div>
@@ -108,10 +104,6 @@ export default function Layout() {
               <Settings size={16}/>Admin
             </NavLink>
           )}
-          <a href="/scanner" target="_blank"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/10">
-            <Scan size={16}/>Scanner Formularios
-          </a>
         </div>
       )}
 

@@ -48,17 +48,21 @@ function SimpleBar({ data, xKey, dataKey = 'total', name = 'Socios', height = 19
   )
 }
 
-// Single bar showing % OK per group. Filters out groups with 0 total.
+// % OK bar — always shows all items (including 0 totals). Average line uses only items with data.
 function PctBar({ data, xKey, height = 190 }) {
-  const pctData = (data || [])
-    .map(d => ({ ...d, pct: d.total > 0 ? Math.round(d.ok / d.total * 100) : null }))
-    .filter(d => d.total > 0)
+  const pctData = (data || []).map(d => ({
+    ...d,
+    pct: d.total > 0 ? Math.round(d.ok / d.total * 100) : 0
+  }))
 
   if (!pctData.length) return (
     <div className="flex items-center justify-center text-gray-400 text-sm" style={{ height }}>Sin datos</div>
   )
 
-  const avg = Math.round(pctData.reduce((s, d) => s + d.pct, 0) / pctData.length)
+  const withData = pctData.filter(d => d.total > 0)
+  const avg = withData.length
+    ? Math.round(withData.reduce((s, d) => s + d.pct, 0) / withData.length)
+    : null
 
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -67,11 +71,15 @@ function PctBar({ data, xKey, height = 190 }) {
         <XAxis dataKey={xKey} tick={{ fontSize: 10 }}/>
         <YAxis tick={{ fontSize: 10 }} domain={[0, 100]} unit="%"/>
         <Tooltip
-          formatter={(v, _, props) => [`${v}% (${props.payload.ok} OK / ${props.payload.total} total)`, '% OK']}
+          formatter={(v, _, props) => [
+            `${v}% (${props.payload.ok} OK / ${props.payload.total} total)`, '% OK'
+          ]}
           contentStyle={{ fontSize: 12, borderRadius: 8 }}
         />
-        <ReferenceLine y={avg} stroke="#f59e0b" strokeDasharray="4 2"
-          label={{ value: `media ${avg}%`, fontSize: 9, fill: '#b45309', position: 'insideTopRight' }}/>
+        {avg != null && (
+          <ReferenceLine y={avg} stroke="#f59e0b" strokeDasharray="4 2"
+            label={{ value: `media ${avg}%`, fontSize: 9, fill: '#b45309', position: 'insideTopRight' }}/>
+        )}
         <Bar dataKey="pct" name="% OK" fill={OK_COLOR} radius={[4,4,0,0]} maxBarSize={36}/>
       </BarChart>
     </ResponsiveContainer>
@@ -166,7 +174,7 @@ export default function Estadisticas() {
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Cuota media por tramo de edad (€)</h3>
             <SimpleBar
-              data={(data.edad_tramos || []).filter(t => t.cuota_media != null)}
+              data={data.edad_tramos || []}
               xKey="tramo" dataKey="cuota_media" name="Cuota media (€)"
               unit="€" color={CUO_COLOR}
             />

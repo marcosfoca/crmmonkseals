@@ -46,7 +46,7 @@ export default function Produccion() {
   const [fechaDesde, setDesde]  = useState('')
   const [fechaHasta, setHasta]  = useState('')
   const [showFilters, setShowF] = useState(false)
-  const [sortCol, setSortCol]   = useState('fecha_alta')
+  const [sortCol, setSortCol]   = useState('fecha_firma')
   const [sortDir, setSortDir]   = useState('desc')
 
   const load = useCallback(async (p = 1) => {

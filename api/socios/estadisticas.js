@@ -40,6 +40,14 @@ function tipoDoc(nif) {
 
 const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
 
+const ONGS_FIJAS = ['CRUZ ROJA', 'PLAN']
+const CUOTAS_FIJAS = [6, 10, 12, 15, 20, 25, 30]
+const TRAMOS_EDAD = [
+  ['<24',   0,  23], ['24-29', 24, 29], ['30-39', 30, 39],
+  ['40-49', 40, 49], ['50-59', 50, 59], ['60-69', 60, 69],
+  ['70-79', 70, 79], ['80-89', 80, 89], ['90-99', 90, 99],
+]
+
 const EMPTY = {
   total: 0, edad_media: null, cuota_media: null, llamada_ok: 0,
   edad_tramos: [], cuota_por_estado: [], por_sexo: [], por_documento: [],
@@ -90,12 +98,8 @@ export default async function handler(req, res) {
       ? Object.entries(edadFreq).sort((a,b) => b[1]-a[1])[0]?.[0]
       : null
 
-    // Edad tramos — ok/ko + cuota media per tramo
-    const tramosEdad = [
-      ['18-25', 18, 25], ['26-35', 26, 35], ['36-45', 36, 45],
-      ['46-55', 46, 55], ['56-65', 56, 65], ['66+', 66, 150]
-    ]
-    const edad_tramos = tramosEdad.map(([tramo, min, max]) => {
+    // Edad tramos — ok/ko + cuota media per tramo (always all buckets, cuota_media=0 if none)
+    const edad_tramos = TRAMOS_EDAD.map(([tramo, min, max]) => {
       const arr = data.filter(s => {
         const dob = s.fecha_nacimiento ? new Date(s.fecha_nacimiento) : null
         if (!dob || isNaN(dob)) return false
@@ -105,7 +109,7 @@ export default async function handler(req, res) {
         return age >= min && age <= max
       })
       const cuotas = arr.map(s => Number(s.cuota)).filter(Boolean)
-      return { tramo, ...countOkKo(arr), cuota_media: avg(cuotas) }
+      return { tramo, ...countOkKo(arr), cuota_media: avg(cuotas) ?? 0 }
     })
 
     // Cuota por estado (cuota media — useful for understanding ticket size)
@@ -140,25 +144,35 @@ export default async function handler(req, res) {
       .filter(([, arr]) => arr.length > 0)
       .map(([tipo, arr]) => ({ tipo, ...countOkKo(arr) }))
 
-    // Por ONG — ok/ko stacked
+    // Por ONG — always include CRUZ ROJA and PLAN, then any others
     const ongBuckets = {}
+    ONGS_FIJAS.forEach(o => { ongBuckets[o] = [] })
     data.forEach(s => {
-      const o = (s.ong || 'Sin ONG').replace('_', ' ')
+      const o = (s.ong || '').replace('_', ' ').toUpperCase()
       if (!ongBuckets[o]) ongBuckets[o] = []
       ongBuckets[o].push(s)
     })
     const por_ong = Object.entries(ongBuckets)
       .map(([ong, arr]) => ({ ong, ...countOkKo(arr) }))
 
-    // Por tramo de cuota — ok/ko stacked
-    const tramosC = [
-      ['≤6€', 0, 6], ['7-10€', 7, 10], ['11-15€', 11, 15],
-      ['16-20€', 16, 20], ['21-25€', 21, 25], ['>25€', 26, 999]
+    // Por tramo de cuota — exact match for fixed values, OTRAS for non-matching ≤30, >30€ for the rest
+    const por_cuota_tramo = [
+      ...CUOTAS_FIJAS.map(v => ({
+        tramo: `${v}€`,
+        ...countOkKo(data.filter(s => Number(s.cuota) === v))
+      })),
+      {
+        tramo: '>30€',
+        ...countOkKo(data.filter(s => Number(s.cuota) > 30))
+      },
+      {
+        tramo: 'OTRAS',
+        ...countOkKo(data.filter(s => {
+          const c = Number(s.cuota)
+          return c > 0 && !CUOTAS_FIJAS.includes(c) && c <= 30
+        }))
+      },
     ]
-    const por_cuota_tramo = tramosC.map(([tramo, min, max]) => {
-      const arr = data.filter(s => Number(s.cuota) >= min && Number(s.cuota) <= max)
-      return { tramo, ...countOkKo(arr) }
-    })
 
     // Volumen por tiempo
     const ventasData = data.filter(s => s.llamada && s.fecha_alta)
