@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio'
 
 export const LOGIN_URL = 'https://comercial.topf2f.com/usuarios/login.php'
 export const PROD_URL  = 'https://comercial.topf2f.com/comercial_produccion.php'
+export const TEAM_URL  = 'https://comercial.topf2f.com/comercial_produccion2.php'
 export const BASE_URL  = 'https://comercial.topf2f.com'
 
 const PROD_BODY = new URLSearchParams({
@@ -9,6 +10,30 @@ const PROD_BODY = new URLSearchParams({
   filtrofecha: '0', estadobo: '0',
   SI_A: 'Si. Esta es la consulta que quiero hacer.'
 }).toString()
+
+// Fetch team page for a specific month (returns socios WITH fecha_nacimiento)
+export async function fetchTeamMonthHtml(cookies, year, month) {
+  const pad = n => String(n).padStart(2, '0')
+  const fechainicio = `${year}-${pad(month)}-01`
+  const lastDay = new Date(year, month, 0).getDate()
+  const fechafin  = `${year}-${pad(month)}-${lastDay}`
+  const body = new URLSearchParams({
+    fechainicio, fechafin,
+    filtrofecha: '0', estadobo: '0', equipo: '0',
+    SI_A: 'Si, esta es la consulta que quiero hacer.'
+  }).toString()
+  try {
+    const r = await fetch(TEAM_URL, {
+      method: 'POST',
+      headers: { ...commonHeaders(cookies), 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    })
+    if (!r.ok) return null
+    const h = await r.text()
+    if (h.includes('login.php') || h.includes('usuarios/login')) return null
+    return h
+  } catch { return null }
+}
 
 function extractCookieString(res) {
   try {

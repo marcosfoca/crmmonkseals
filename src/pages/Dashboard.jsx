@@ -29,8 +29,10 @@ function StatCard({ icon: Icon, label, value, color = 'blue', sub }) {
 export default function Dashboard() {
   const { user } = useAuth()
   const [stats, setStats]     = useState(null)
-  const [syncing, setSyncing] = useState(false)
-  const [syncMsg, setSyncMsg] = useState('')
+  const [syncing, setSyncing]   = useState(false)
+  const [syncMsg, setSyncMsg]   = useState('')
+  const [backfilling, setBackfilling] = useState(false)
+  const [backfillMsg, setBackfillMsg] = useState('')
 
   useEffect(() => { loadStats() }, [])
 
@@ -60,6 +62,26 @@ export default function Dashboard() {
     }
   }
 
+  async function handleBackfillDob() {
+    setBackfilling(true)
+    setBackfillMsg('')
+    try {
+      const res = await apiFetch('/api/backfill-dob', { method: 'POST' })
+      if (!res) { setBackfilling(false); return }
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setBackfillMsg(`✓ DOB rellenados: ${data.updated} socios actualizados (${data.dobFound} encontrados en topf2f)`)
+        loadStats()
+      } else {
+        setBackfillMsg(`✗ ${data?.error || 'Error'}`)
+      }
+    } catch (err) {
+      setBackfillMsg(`✗ ${err.message}`)
+    } finally {
+      setBackfilling(false)
+    }
+  }
+
   const today = format(new Date(), "EEEE d 'de' MMMM", { locale: es })
 
   const rachaLabel = stats?.racha
@@ -77,15 +99,30 @@ export default function Dashboard() {
           <p className="text-sm text-gray-500 capitalize mt-0.5">{today}</p>
         </div>
         {user?.topf2f_user && (
-          <div className="flex flex-col items-end gap-1">
-            <button onClick={handleSync} disabled={syncing}
-              className="btn-secondary gap-2">
-              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''}/>
-              {syncing ? 'Sincronizando...' : 'Sincronizar con topf2f'}
-            </button>
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex gap-2">
+              <button onClick={handleSync} disabled={syncing || backfilling}
+                className="btn-secondary gap-2">
+                <RefreshCw size={14} className={syncing ? 'animate-spin' : ''}/>
+                {syncing ? 'Sincronizando...' : 'Sincronizar'}
+              </button>
+              {user?.role >= 90 && (
+                <button onClick={handleBackfillDob} disabled={syncing || backfilling}
+                  title="Rellena fecha de nacimiento histórica mes a mes desde topf2f"
+                  className="btn-secondary gap-2 text-purple-700 border-purple-200 hover:bg-purple-50">
+                  <RefreshCw size={14} className={backfilling ? 'animate-spin' : ''}/>
+                  {backfilling ? 'Rellenando DOB...' : 'Rellenar DOB'}
+                </button>
+              )}
+            </div>
             {syncMsg && (
               <span className={`text-xs max-w-xs text-right break-words ${syncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
                 {syncMsg}
+              </span>
+            )}
+            {backfillMsg && (
+              <span className={`text-xs max-w-xs text-right break-words ${backfillMsg.startsWith('✓') ? 'text-purple-600' : 'text-red-600'}`}>
+                {backfillMsg}
               </span>
             )}
           </div>
