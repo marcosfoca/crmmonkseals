@@ -33,7 +33,7 @@ export default async function handler(req, res) {
         // Discover the real team URL (may contain ?equipo=X for scoped accounts)
         const indivHtml = await fetchIndivHtml(cookies)
         const teamUrl = discoverTeamUrl(indivHtml) || TEAM_URL
-        return fetchAllTeamSocios(cookies, '2000-01-01', '2030-12-31', teamUrl)
+        return fetchAllTeamSocios(cookies, '2025-01-01', '2026-12-31', teamUrl)
       })
     )
 

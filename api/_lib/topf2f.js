@@ -20,12 +20,11 @@ function parseTotalFromHtml(html) {
 // Fetch ALL pages of team production and return combined socios array.
 // teamUrl: the discovered link (may include ?equipo=X for scoped accounts).
 // ini/fin default to all-time range.
-export async function fetchAllTeamSocios(cookies, ini = '2000-01-01', fin = '2030-12-31', teamUrl = TEAM_URL) {
+export async function fetchAllTeamSocios(cookies, ini = '2025-01-01', fin = '2026-12-31', teamUrl = TEAM_URL) {
   const isLoggedOut = h => h.includes('login.php') || h.includes('usuarios/login')
-  // No 'equipo' in POST body — let the URL's query string own it (avoids overriding ?equipo=X)
   const body = new URLSearchParams({
     fechainicio: ini, fechafin: fin,
-    filtrofecha: '0', estadobo: '0',
+    filtrofecha: '0', estadobo: '0', equipo: '0',
     SI_A: 'Si, esta es la consulta que quiero hacer.'
   }).toString()
 
