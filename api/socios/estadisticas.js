@@ -68,9 +68,11 @@ export default async function handler(req, res) {
   try {
     const supabase = db()
     const visibleIds = await getVisibleUserIds(supabase, claim.id, claim.role)
+    const { scope } = req.query
+    const effectiveIds = scope === 'personal' ? [claim.id] : visibleIds
 
     let q = supabase.from('socios').select('estado,llamada,cuota,fecha_alta,fecha_nacimiento,sexo,nif,ong')
-    if (visibleIds) q = q.in('captador_id', visibleIds)
+    if (effectiveIds) q = q.in('captador_id', effectiveIds)
     const { data, error } = await q
 
     if (error) return res.status(500).json({ error: error.message })

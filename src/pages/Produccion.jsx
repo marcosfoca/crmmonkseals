@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { apiFetch } from '../lib/auth.js'
+import { useAuth } from '../hooks/useAuth.jsx'
+import { apiFetch, ROLES } from '../lib/auth.js'
 import { Search, Filter, X, ChevronDown, ChevronUp } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -31,13 +32,16 @@ function fmt(d) {
 }
 
 export default function Produccion() {
+  const { user }  = useAuth()
+  const isLider   = user?.role > ROLES.CAPTADOR
+  const [scope, setScope] = useState('equipo')
+
   const [socios, setSocios]     = useState([])
   const [total, setTotal]       = useState(0)
   const [loading, setLoading]   = useState(true)
   const [page, setPage]         = useState(1)
   const PER_PAGE = 50
 
-  // Filters
   const [nombre, setNombre]     = useState('')
   const [dni, setDni]           = useState('')
   const [cuota, setCuota]       = useState('')
@@ -54,6 +58,7 @@ export default function Produccion() {
     const params = new URLSearchParams({
       page: p, per_page: PER_PAGE,
       sort: sortCol, dir: sortDir,
+      ...(isLider && scope === 'personal' ? { captador: 'me' } : {}),
       ...(nombre && { nombre }),
       ...(dni    && { dni }),
       ...(cuota  && { cuota }),
@@ -69,22 +74,20 @@ export default function Produccion() {
       setTotal(data.total)
     }
     setLoading(false)
-  }, [nombre, dni, cuota, estado, ong, fechaDesde, fechaHasta, sortCol, sortDir])
+  }, [nombre, dni, cuota, estado, ong, fechaDesde, fechaHasta, sortCol, sortDir, scope, isLider])
 
-  const prevFilters = useRef(null)
+  const prevKey = useRef(null)
 
   useEffect(() => {
-    const filters = JSON.stringify({ nombre, dni, cuota, estado, ong, fechaDesde, fechaHasta, sortCol, sortDir })
-    if (prevFilters.current !== null && prevFilters.current !== filters) {
-      // Filters changed: reset page and load page 1
+    const key = JSON.stringify({ nombre, dni, cuota, estado, ong, fechaDesde, fechaHasta, sortCol, sortDir, scope })
+    if (prevKey.current !== null && prevKey.current !== key) {
       setPage(1)
       load(1)
     } else {
-      // Initial mount or page change from pagination
       load(page)
     }
-    prevFilters.current = filters
-  }, [page, nombre, dni, cuota, estado, ong, fechaDesde, fechaHasta, sortCol, sortDir])
+    prevKey.current = key
+  }, [page, nombre, dni, cuota, estado, ong, fechaDesde, fechaHasta, sortCol, sortDir, scope])
 
   function toggleSort(col) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -106,15 +109,27 @@ export default function Produccion() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-xl font-bold text-gray-900">Producción
           <span className="ml-2 text-sm font-normal text-gray-400">{total} socios</span>
         </h1>
-        <button onClick={() => setShowF(f => !f)}
-          className={`btn-secondary gap-2 ${hasFilters ? 'border-brand-blue text-brand-blue' : ''}`}>
-          <Filter size={14}/>
-          Filtros {hasFilters && `(activos)`}
-        </button>
+        <div className="flex items-center gap-2">
+          {isLider && (
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+              {[['equipo','Equipo'],['personal','Mis socios']].map(([v,l]) => (
+                <button key={v} onClick={() => setScope(v)}
+                  className={`px-3 py-1.5 font-medium transition-colors ${
+                    scope === v ? 'bg-brand-blue text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}>{l}</button>
+              ))}
+            </div>
+          )}
+          <button onClick={() => setShowF(f => !f)}
+            className={`btn-secondary gap-2 ${hasFilters ? 'border-brand-blue text-brand-blue' : ''}`}>
+            <Filter size={14}/>
+            Filtros {hasFilters && `(activos)`}
+          </button>
+        </div>
       </div>
 
       {/* Search bar */}
@@ -174,41 +189,32 @@ export default function Produccion() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                {/* ONG: sm+ */}
                 <th className="hidden sm:table-cell text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none whitespace-nowrap"
                   onClick={() => toggleSort('ong')}>
                   <span className="flex items-center gap-1">ONG<SortIcon col="ong"/></span>
                 </th>
-                {/* Donante: always */}
                 <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none whitespace-nowrap"
                   onClick={() => toggleSort('nombre')}>
                   <span className="flex items-center gap-1">Donante<SortIcon col="nombre"/></span>
                 </th>
-                {/* NIF: md+ */}
                 <th className="hidden md:table-cell text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">NIF</th>
-                {/* Cuota: always */}
                 <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none whitespace-nowrap"
                   onClick={() => toggleSort('cuota')}>
                   <span className="flex items-center gap-1">Cuota<SortIcon col="cuota"/></span>
                 </th>
-                {/* Estado: always */}
                 <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none whitespace-nowrap"
                   onClick={() => toggleSort('estado')}>
                   <span className="flex items-center gap-1">Estado<SortIcon col="estado"/></span>
                 </th>
-                {/* Tipo: md+ */}
                 <th className="hidden md:table-cell text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Tipo</th>
-                {/* F.Alta: sm+ */}
                 <th className="hidden sm:table-cell text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none whitespace-nowrap"
                   onClick={() => toggleSort('fecha_alta')}>
                   <span className="flex items-center gap-1">F. Alta<SortIcon col="fecha_alta"/></span>
                 </th>
-                {/* F.OKKO: md+ */}
                 <th className="hidden md:table-cell text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none whitespace-nowrap"
                   onClick={() => toggleSort('fecha_okko')}>
                   <span className="flex items-center gap-1">F. OK/KO<SortIcon col="fecha_okko"/></span>
                 </th>
-                {/* Llamada: sm+ */}
                 <th className="hidden sm:table-cell text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">✓</th>
               </tr>
             </thead>
@@ -250,7 +256,6 @@ export default function Produccion() {
           </table>
         </div>
 
-        {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 text-sm text-gray-500">
             <span>Página {page} de {totalPages}</span>

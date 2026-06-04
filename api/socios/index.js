@@ -34,10 +34,11 @@ export default async function handler(req, res) {
     const supabase = db()
     const {
       page = 1, per_page = 50, sort = 'fecha_alta', dir = 'desc',
-      nombre, dni, cuota, estado, ong, desde, hasta
+      nombre, dni, cuota, estado, ong, desde, hasta, captador
     } = req.query
 
     const visibleIds = await getVisibleUserIds(supabase, claim.id, claim.role)
+    const effectiveIds = captador === 'me' ? [claim.id] : visibleIds
 
     const ALLOWED_SORT = ['fecha_alta','fecha_okko','cuota','estado','nombre','apellido1','ong','llamada']
     const safeSort = ALLOWED_SORT.includes(sort) ? sort : 'fecha_alta'
@@ -46,7 +47,7 @@ export default async function handler(req, res) {
       .from('socios')
       .select('id,num_formulario,ong,captador_id,nombre,apellido1,apellido2,nif,cuota,periodicidad,estado,tipo_socio,fecha_alta,fecha_okko,llamada', { count: 'exact' })
 
-    if (visibleIds) query = query.in('captador_id', visibleIds)
+    if (effectiveIds) query = query.in('captador_id', effectiveIds)
 
     // Search across nombre + apellido1 + apellido2 with OR
     if (nombre) {

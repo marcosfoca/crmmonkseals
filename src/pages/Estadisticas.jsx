@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { apiFetch } from '../lib/auth.js'
+import { useAuth } from '../hooks/useAuth.jsx'
+import { apiFetch, ROLES } from '../lib/auth.js'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine
@@ -48,7 +49,6 @@ function SimpleBar({ data, xKey, dataKey = 'total', name = 'Socios', height = 19
   )
 }
 
-// % OK bar — always shows all items (including 0 totals). Average line uses only items with data.
 function PctBar({ data, xKey, height = 190 }) {
   const pctData = (data || []).map(d => ({
     ...d,
@@ -86,21 +86,7 @@ function PctBar({ data, xKey, height = 190 }) {
   )
 }
 
-export default function Estadisticas() {
-  const [data, setData]    = useState(null)
-  const [loading, setLoad] = useState(true)
-  const [volumen, setVol]  = useState('mes')
-
-  useEffect(() => {
-    apiFetch('/api/socios/estadisticas').then(async r => {
-      if (r?.ok) setData(await r.json())
-      setLoad(false)
-    }).catch(() => setLoad(false))
-  }, [])
-
-  if (loading) return <div className="text-center py-20 text-gray-400">Cargando estadísticas...</div>
-  if (!data)   return <div className="text-center py-20 text-red-500">Error al cargar datos</div>
-
+function StatsContent({ data, volumen, setVol }) {
   const volData = volumen === 'mes'   ? data.volumen_por_mes
                : volumen === 'semana' ? data.volumen_por_semana
                : data.volumen_por_dia
@@ -108,10 +94,7 @@ export default function Estadisticas() {
   const totalOk = (data.por_ong || []).reduce((s, o) => s + o.ok, 0)
 
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold text-gray-900">Estadísticas</h1>
-
-      {/* KPIs */}
+    <>
       <Section title="Resumen general">
         <KPIRow items={[
           { label: 'Total socios',         value: data.total },
@@ -121,7 +104,6 @@ export default function Estadisticas() {
         ]}/>
       </Section>
 
-      {/* VOLUMEN */}
       <Section title="Volumen  ·  total de socios por grupo">
         <p className="text-xs text-gray-400 -mt-2">Cuántos socios hay en cada grupo, sin distinguir estado.</p>
 
@@ -152,7 +134,6 @@ export default function Estadisticas() {
         </div>
       </Section>
 
-      {/* CALIDAD */}
       <Section title="Calidad  ·  % de socios OK por grupo">
         <p className="text-xs text-gray-400 -mt-2">
           Porcentaje de socios con estado SOCIO. La línea amarilla muestra la media.
@@ -181,6 +162,53 @@ export default function Estadisticas() {
           </div>
         </div>
       </Section>
+    </>
+  )
+}
+
+export default function Estadisticas() {
+  const { user } = useAuth()
+  const [scope, setScope]  = useState('equipo')
+  const [data, setData]    = useState(null)
+  const [loading, setLoad] = useState(true)
+  const [volumen, setVol]  = useState('mes')
+
+  const isLider = user?.role > ROLES.CAPTADOR
+
+  useEffect(() => {
+    setLoad(true)
+    setData(null)
+    const url = isLider && scope === 'personal'
+      ? '/api/socios/estadisticas?scope=personal'
+      : '/api/socios/estadisticas'
+    apiFetch(url).then(async r => {
+      if (r?.ok) setData(await r.json())
+      setLoad(false)
+    }).catch(() => setLoad(false))
+  }, [scope, isLider])
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-xl font-bold text-gray-900">Estadísticas</h1>
+        {isLider && (
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+            {[['equipo','Equipo'],['personal','Mi producción']].map(([v,l]) => (
+              <button key={v} onClick={() => setScope(v)}
+                className={`px-4 py-1.5 font-medium transition-colors ${
+                  scope === v ? 'bg-brand-blue text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}>{l}</button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {loading
+        ? <div className="text-center py-20 text-gray-400">Cargando estadísticas...</div>
+        : !data
+          ? <div className="text-center py-20 text-red-500">Error al cargar datos</div>
+          : <StatsContent data={data} volumen={volumen} setVol={setVol}/>
+      }
     </div>
   )
 }
