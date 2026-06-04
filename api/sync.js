@@ -40,6 +40,8 @@ async function syncAccount(topf2f_user, topf2f_pass_b64) {
   return { socios, hasTeam: false }
 }
 
+export const config = { maxDuration: 120 }
+
 export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -76,9 +78,17 @@ export default async function handler(req, res) {
     // Merge socios across all accounts (non-null values win)
     const sociosMap = {}
     let anyTeam = false
-    for (const r of results) {
-      if (r.status === 'rejected') { console.warn('[sync] account failed:', r.reason?.message); continue }
+    const accountCounts = []
+    for (let i = 0; i < accounts.length; i++) {
+      const r = results[i]
+      const user = accounts[i].topf2f_user
+      if (r.status === 'rejected') {
+        console.warn('[sync] account failed:', r.reason?.message)
+        accountCounts.push(`${user}:ERR`)
+        continue
+      }
       if (r.value.hasTeam) anyTeam = true
+      accountCounts.push(`${user}:${r.value.socios.length}`)
       for (const s of r.value.socios) {
         const prev = sociosMap[s.num_formulario]
         sociosMap[s.num_formulario] = prev ? {
@@ -139,8 +149,8 @@ export default async function handler(req, res) {
     if (upsertErr) throw new Error('Upsert error: ' + upsertErr.message)
 
     const debugParts = []
-    if (anyTeam) debugParts.push('producción de equipo')
-    if (accounts.length > 1) debugParts.push(`${accounts.length} cuentas`)
+    if (anyTeam) debugParts.push('equipo')
+    debugParts.push(accountCounts.join(', '))
     const newlyLinked = records.filter(r => r.captador_id && !existingMap[r.num_formulario]?.captador_id).length
     if (newlyLinked > 0) debugParts.push(`${newlyLinked} enlazados`)
 
