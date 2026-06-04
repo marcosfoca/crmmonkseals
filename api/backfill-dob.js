@@ -14,51 +14,35 @@ export default async function handler(req, res) {
   const supabase = db()
 
   try {
-    // Get admin's topf2f credentials
-    const { data: user } = await supabase
-      .from('users').select('topf2f_user, topf2f_pass').eq('id', claim.id).single()
-    if (!user?.topf2f_user) return res.status(400).json({ error: 'Sin credenciales topf2f' })
+    // Get ALL users with topf2f credentials — each root user has their own team production
+    const { data: accounts } = await supabase
+      .from('users')
+      .select('id, topf2f_user, topf2f_pass')
+      .not('topf2f_user', 'is', null)
+      .not('topf2f_pass', 'is', null)
 
-    const pass = Buffer.from(user.topf2f_pass, 'base64').toString('utf8')
-    const cookies = await loginTopF2F(user.topf2f_user, pass)
+    if (!accounts?.length) return res.status(400).json({ error: 'Sin credenciales topf2f configuradas.' })
 
-    // Default: fetch from May 2025 to current month
-    const now = new Date()
-    const endYear  = now.getFullYear()
-    const endMonth = now.getMonth() + 1
-    const startYear  = parseInt(req.body?.startYear  || 2025)
-    const startMonth = parseInt(req.body?.startMonth || 5)
+    console.log(`[backfill-dob] syncing ${accounts.length} account(s)`)
 
-    // Build list of months to fetch
-    const months = []
-    let y = startYear, m = startMonth
-    while (y < endYear || (y === endYear && m <= endMonth)) {
-      months.push({ y, m })
-      m++; if (m > 12) { m = 1; y++ }
-    }
+    // Login to all accounts in parallel, then fetch each team's full production
+    const sociosResults = await Promise.allSettled(
+      accounts.map(async a => {
+        const pass = Buffer.from(a.topf2f_pass, 'base64').toString('utf8')
+        const cookies = await loginTopF2F(a.topf2f_user, pass)
+        return fetchAllTeamSocios(cookies)
+      })
+    )
 
-    console.log(`[backfill-dob] Fetching ${months.length} months in parallel`)
-
-    // Fetch all months in parallel — each call now pages through all 30-per-page results
-    const pad = n => String(n).padStart(2, '0')
-    const monthFetches = months.map(({ y, m }) => {
-      const ini = `${y}-${pad(m)}-01`
-      const lastDay = new Date(y, m, 0).getDate()
-      const fin = `${y}-${pad(m)}-${lastDay}`
-      return fetchAllTeamSocios(cookies, ini, fin)
-    })
-    const sociosResults = await Promise.allSettled(monthFetches)
-
-    // Collect num_formulario → { fecha_nacimiento, sexo, nif }
+    // Collect num_formulario → { fecha_nacimiento, sexo, nif } across all accounts
     const dobMap = {}
-    const monthResults = []
+    const accountResults = []
 
-    for (let i = 0; i < months.length; i++) {
-      const { y, m } = months[i]
-      const label = `${y}-${String(m).padStart(2, '0')}`
+    for (let i = 0; i < accounts.length; i++) {
+      const a = accounts[i]
       const r = sociosResults[i]
       if (r.status === 'rejected' || !r.value) {
-        monthResults.push({ month: label, socios: 0, withDob: 0, error: r.reason?.message || 'null' })
+        accountResults.push({ user: a.topf2f_user, socios: 0, withDob: 0, error: r.reason?.message || 'null' })
         continue
       }
       const socios = r.value
@@ -70,17 +54,22 @@ export default async function handler(req, res) {
             sexo: s.sexo || null,
             nif:  s.nif  || null,
           }
-          if (s.fecha_nacimiento) withDob++
+        } else {
+          // Merge: non-null wins
+          if (s.fecha_nacimiento) dobMap[s.num_formulario].fecha_nacimiento = s.fecha_nacimiento
+          if (s.sexo) dobMap[s.num_formulario].sexo = s.sexo
+          if (s.nif)  dobMap[s.num_formulario].nif  = s.nif
         }
+        if (dobMap[s.num_formulario].fecha_nacimiento) withDob++
       }
-      monthResults.push({ month: label, socios: socios.length, withDob })
+      accountResults.push({ user: a.topf2f_user, socios: socios.length, withDob })
     }
 
     const dobEntries = Object.entries(dobMap).filter(([, v]) => v.fecha_nacimiento)
-    console.log(`[backfill-dob] Found ${dobEntries.length} socios with DOB across all months`)
+    console.log(`[backfill-dob] ${dobEntries.length} socios with DOB across ${accounts.length} accounts`)
 
     if (dobEntries.length === 0) {
-      return res.status(200).json({ ok: true, updated: 0, dobFound: 0, monthResults })
+      return res.status(200).json({ ok: true, updated: 0, dobFound: 0, accountResults })
     }
 
     // Find which socios in our DB are missing fecha_nacimiento
@@ -115,7 +104,7 @@ export default async function handler(req, res) {
       updated,
       dobFound: dobEntries.length,
       dbNeedingUpdate: needsUpdate.length,
-      monthResults,
+      accountResults,
     })
 
   } catch (err) {

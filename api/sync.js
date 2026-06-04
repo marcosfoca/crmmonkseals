@@ -52,13 +52,16 @@ export default async function handler(req, res) {
   try {
     const visibleIds = await getVisibleUserIds(supabase, claim.id, claim.role)
 
-    // Collect all topf2f accounts in the visible tree (admins only sync self to avoid runaway)
+    // Collect topf2f accounts to sync:
+    // - Non-root users: only accounts in their visible subtree
+    // - Admin (role=99) or es_raiz: ALL accounts with credentials — each root user
+    //   owns a separate topf2f team that must be fetched independently
     let credQuery = supabase.from('users')
       .select('id, topf2f_user, topf2f_pass')
       .not('topf2f_user', 'is', null)
       .not('topf2f_pass', 'is', null)
     if (visibleIds) credQuery = credQuery.in('id', visibleIds)
-    else            credQuery = credQuery.eq('id', claim.id)
+    // else (admin/es_raiz): no filter → sync all accounts
 
     const { data: accounts } = await credQuery
     if (!accounts?.length) return res.status(400).json({ error: 'No tienes credenciales de topf2f configuradas.' })

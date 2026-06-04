@@ -70,7 +70,10 @@ export default function Dashboard() {
       if (!res) { setBackfilling(false); return }
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
-        setBackfillMsg(`✓ DOB rellenados: ${data.updated} socios actualizados (${data.dobFound} encontrados en topf2f)`)
+        const accounts = (data.accountResults || [])
+          .map(a => `${a.user}: ${a.socios}${a.error ? ' ✗' : ''}`)
+          .join(', ')
+        setBackfillMsg(`✓ DOB rellenados: ${data.updated} actualizados · ${data.dobFound} con DOB (${accounts})`)
         loadStats()
       } else {
         setBackfillMsg(`✗ ${data?.error || 'Error'}`)
