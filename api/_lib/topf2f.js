@@ -18,19 +18,21 @@ function parseTotalFromHtml(html) {
 }
 
 // Fetch ALL pages of team production and return combined socios array.
-// ini/fin default to all-time range. Use month-scoped dates for backfill.
-export async function fetchAllTeamSocios(cookies, ini = '2000-01-01', fin = '2030-12-31') {
+// teamUrl: the discovered link (may include ?equipo=X for scoped accounts).
+// ini/fin default to all-time range.
+export async function fetchAllTeamSocios(cookies, ini = '2000-01-01', fin = '2030-12-31', teamUrl = TEAM_URL) {
   const isLoggedOut = h => h.includes('login.php') || h.includes('usuarios/login')
+  // No 'equipo' in POST body — let the URL's query string own it (avoids overriding ?equipo=X)
   const body = new URLSearchParams({
     fechainicio: ini, fechafin: fin,
-    filtrofecha: '1', estadobo: '0', equipo: '0',
+    filtrofecha: '0', estadobo: '0',
     SI_A: 'Si, esta es la consulta que quiero hacer.'
   }).toString()
 
-  // Page 1 via POST
+  // Page 1 via POST to the discovered teamUrl
   let firstHtml
   try {
-    const r = await fetch(TEAM_URL, {
+    const r = await fetch(teamUrl, {
       method: 'POST',
       headers: { ...commonHeaders(cookies), 'Content-Type': 'application/x-www-form-urlencoded' },
       body
@@ -42,16 +44,17 @@ export async function fetchAllTeamSocios(cookies, ini = '2000-01-01', fin = '203
 
   const { socios: page1 } = parseProductionTable(firstHtml)
   const total = parseTotalFromHtml(firstHtml)
-  console.log(`[topf2f] team page 1: ${page1.length} socios, reported total: ${total}`)
+  console.log(`[topf2f] team page 1: ${page1.length} socios, reported total: ${total} (url: ${teamUrl})`)
   if (total <= 30) return page1
 
   const totalPages = Math.ceil(total / 30)
   console.log(`[topf2f] fetching ${totalPages} pages (${total} socios)`)
 
-  // Pages 2..N via GET — fetch all in parallel
+  // Pages 2..N via GET — preserve any ?equipo=X already in teamUrl
+  const sep = teamUrl.includes('?') ? '&' : '?'
   const pageResults = await Promise.allSettled(
     Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(p =>
-      fetch(`${TEAM_URL}?page=${p}&ini=${ini}&fin=${fin}`, { headers: commonHeaders(cookies) })
+      fetch(`${teamUrl}${sep}page=${p}&ini=${ini}&fin=${fin}`, { headers: commonHeaders(cookies) })
         .then(r => r.ok ? r.text() : null)
         .catch(() => null)
     )

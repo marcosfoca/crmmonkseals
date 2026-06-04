@@ -29,9 +29,10 @@ async function syncAccount(topf2f_user, topf2f_pass_b64) {
   const indivHtml = await fetchIndivHtml(cookies)
   const teamUrl   = discoverTeamUrl(indivHtml)
 
-  // Prefer team production (all-pages) over individual page
+  // Prefer team production (all-pages) over individual page.
+  // Pass the discovered teamUrl — it may contain ?equipo=X needed for scoped accounts.
   if (teamUrl) {
-    const teamSocios = await fetchAllTeamSocios(cookies)
+    const teamSocios = await fetchAllTeamSocios(cookies, '2000-01-01', '2030-12-31', teamUrl)
     if (teamSocios?.length) return { socios: teamSocios, hasTeam: true }
   }
 

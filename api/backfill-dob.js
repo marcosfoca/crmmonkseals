@@ -1,6 +1,6 @@
 import { db } from './_lib/db.js'
 import { authMiddleware } from './_lib/jwt.js'
-import { loginTopF2F, fetchAllTeamSocios } from './_lib/topf2f.js'
+import { loginTopF2F, fetchIndivHtml, discoverTeamUrl, fetchAllTeamSocios, TEAM_URL } from './_lib/topf2f.js'
 
 export const config = { maxDuration: 120 }
 
@@ -30,7 +30,10 @@ export default async function handler(req, res) {
       accounts.map(async a => {
         const pass = Buffer.from(a.topf2f_pass, 'base64').toString('utf8')
         const cookies = await loginTopF2F(a.topf2f_user, pass)
-        return fetchAllTeamSocios(cookies)
+        // Discover the real team URL (may contain ?equipo=X for scoped accounts)
+        const indivHtml = await fetchIndivHtml(cookies)
+        const teamUrl = discoverTeamUrl(indivHtml) || TEAM_URL
+        return fetchAllTeamSocios(cookies, '2000-01-01', '2030-12-31', teamUrl)
       })
     )
 
