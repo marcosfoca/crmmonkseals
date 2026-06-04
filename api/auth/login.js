@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
     const { data: users, error } = await db()
       .from('users')
-      .select('id, username, password_hash, nombre, apellidos, role, topf2f_user, parent_id, activo')
+      .select('id, username, password_hash, nombre, apellidos, role, topf2f_user, parent_id, activo, es_raiz')
       .eq('username', username.trim().toLowerCase())
       .limit(1)
 
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     if (!ok) return res.status(401).json({ error: 'Usuario o contraseña incorrectos' })
 
     const { password_hash, ...safeUser } = user
-    const token = signToken({ id: user.id, role: user.role })
+    const token = signToken({ id: user.id, role: user.role, es_raiz: !!user.es_raiz })
 
     return res.status(200).json({ token, user: safeUser })
 
