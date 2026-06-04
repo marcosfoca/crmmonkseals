@@ -1,6 +1,6 @@
 import { db } from '../_lib/db.js'
 import { authMiddleware } from '../_lib/jwt.js'
-import { loginTopF2F, fetchIndivHtml, discoverTeamUrl, fetchTeamHtml, parseProductionTable } from '../_lib/topf2f.js'
+import { loginTopF2F, fetchIndivHtml, discoverTeamUrl, fetchAllTeamSocios, parseProductionTable } from '../_lib/topf2f.js'
 
 export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
@@ -23,13 +23,16 @@ export default async function handler(req, res) {
     const indivHtml = await fetchIndivHtml(cookies)
     const teamUrl   = discoverTeamUrl(indivHtml)
 
-    let html = indivHtml
+    let socios = []
     if (teamUrl) {
-      const teamHtml = await fetchTeamHtml(cookies, teamUrl)
-      if (teamHtml) html = teamHtml
+      const teamSocios = await fetchAllTeamSocios(cookies)
+      if (teamSocios?.length) socios = teamSocios
+    }
+    if (!socios.length) {
+      const { socios: indivSocios } = parseProductionTable(indivHtml)
+      socios = indivSocios
     }
 
-    const { socios } = parseProductionTable(html)
     const captadores = [...new Set(
       socios.map(s => s.captador_nombre).filter(Boolean).map(n => n.trim()).filter(Boolean)
     )].sort()

@@ -11,17 +11,24 @@ const PROD_BODY = new URLSearchParams({
   SI_A: 'Si. Esta es la consulta que quiero hacer.'
 }).toString()
 
-// Fetch team page for a specific month (returns socios WITH fecha_nacimiento)
-export async function fetchTeamMonthHtml(cookies, year, month) {
-  const pad = n => String(n).padStart(2, '0')
-  const fechainicio = `${year}-${pad(month)}-01`
-  const lastDay = new Date(year, month, 0).getDate()
-  const fechafin  = `${year}-${pad(month)}-${lastDay}`
+// Helper: extract total record count from "Viendo X formularios de Y" text
+function parseTotalFromHtml(html) {
+  const m = html.match(/Viendo\s+\d+\s+\w+\s+de\s+(\d+)/i)
+  return m ? parseInt(m[1]) : 0
+}
+
+// Fetch ALL pages of team production and return combined socios array.
+// ini/fin default to all-time range. Use month-scoped dates for backfill.
+export async function fetchAllTeamSocios(cookies, ini = '2000-01-01', fin = '2030-12-31') {
+  const isLoggedOut = h => h.includes('login.php') || h.includes('usuarios/login')
   const body = new URLSearchParams({
-    fechainicio, fechafin,
+    fechainicio: ini, fechafin: fin,
     filtrofecha: '0', estadobo: '0', equipo: '0',
     SI_A: 'Si, esta es la consulta que quiero hacer.'
   }).toString()
+
+  // Page 1 via POST
+  let firstHtml
   try {
     const r = await fetch(TEAM_URL, {
       method: 'POST',
@@ -29,10 +36,37 @@ export async function fetchTeamMonthHtml(cookies, year, month) {
       body
     })
     if (!r.ok) return null
-    const h = await r.text()
-    if (h.includes('login.php') || h.includes('usuarios/login')) return null
-    return h
+    firstHtml = await r.text()
+    if (isLoggedOut(firstHtml)) return null
   } catch { return null }
+
+  const { socios: page1 } = parseProductionTable(firstHtml)
+  const total = parseTotalFromHtml(firstHtml)
+  console.log(`[topf2f] team page 1: ${page1.length} socios, reported total: ${total}`)
+  if (total <= 30) return page1
+
+  const totalPages = Math.ceil(total / 30)
+  console.log(`[topf2f] fetching ${totalPages} pages (${total} socios)`)
+
+  // Pages 2..N via GET — fetch all in parallel
+  const pageResults = await Promise.allSettled(
+    Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(p =>
+      fetch(`${TEAM_URL}?page=${p}&ini=${ini}&fin=${fin}`, { headers: commonHeaders(cookies) })
+        .then(r => r.ok ? r.text() : null)
+        .catch(() => null)
+    )
+  )
+
+  const all = [...page1]
+  for (const r of pageResults) {
+    const html = r.status === 'fulfilled' ? r.value : null
+    if (html && !isLoggedOut(html)) {
+      const { socios } = parseProductionTable(html)
+      all.push(...socios)
+    }
+  }
+  console.log(`[topf2f] total fetched: ${all.length} socios`)
+  return all
 }
 
 function extractCookieString(res) {
@@ -101,23 +135,6 @@ export function discoverTeamUrl(html) {
     }
   })
   return teamUrl
-}
-
-// Fetch team production HTML — always uses POST with date params (like the individual page)
-export async function fetchTeamHtml(cookies, teamUrl) {
-  const isLoggedOut = (h) => h.includes('login.php') || h.includes('usuarios/login')
-  try {
-    const r = await fetch(teamUrl, {
-      method: 'POST',
-      headers: { ...commonHeaders(cookies), 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: PROD_BODY
-    })
-    if (r.ok) {
-      const h = await r.text()
-      if (!isLoggedOut(h)) return h
-    }
-  } catch {}
-  return null
 }
 
 // Build column index map from header row text (all lowercase+trimmed)

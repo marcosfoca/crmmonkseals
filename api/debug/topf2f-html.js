@@ -1,8 +1,7 @@
 import { authMiddleware } from '../_lib/jwt.js'
-import { loginTopF2F, fetchIndivHtml, discoverTeamUrl, fetchTeamHtml, commonHeaders, PROD_URL, BASE_URL } from '../_lib/topf2f.js'
-import * as cheerio from 'cheerio'
+import { loginTopF2F, fetchIndivHtml, discoverTeamUrl, fetchAllTeamSocios } from '../_lib/topf2f.js'
 
-// Temporary diagnostic endpoint — dumps pagination-related HTML fragments
+// Diagnostic endpoint — returns live topf2f fetch summary (admin only)
 // GET /api/debug/topf2f-html
 export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
@@ -20,55 +19,13 @@ export default async function handler(req, res) {
     const indivHtml = await fetchIndivHtml(cookies)
     const teamUrl = discoverTeamUrl(indivHtml)
 
-    let html = indivHtml
-    let source = 'individual'
-    if (teamUrl) {
-      const teamHtml = await fetchTeamHtml(cookies, teamUrl)
-      if (teamHtml) { html = teamHtml; source = 'team' }
-    }
-
-    const $ = cheerio.load(html)
-
-    // Extract all <a> links (href + text) — reveals pagination links
-    const links = []
-    $('a').each((_, a) => {
-      const href = $(a).attr('href') || ''
-      const text = $(a).text().trim()
-      if (href || text) links.push({ text, href })
-    })
-
-    // Extract all <form> fields
-    const forms = []
-    $('form').each((_, f) => {
-      const action = $(f).attr('action') || ''
-      const method = $(f).attr('method') || 'get'
-      const inputs = []
-      $(f).find('input, select').each((_, inp) => {
-        inputs.push({ name: $(inp).attr('name'), type: $(inp).attr('type'), value: $(inp).attr('value') })
-      })
-      forms.push({ action, method, inputs })
-    })
-
-    // Look for text patterns suggesting pagination
-    const bodyText = $('body').text()
-    const paginationMatches = [
-      ...(bodyText.match(/p[aá]gina[s]?\s*\d+[^]*/gi) || []),
-      ...(bodyText.match(/siguiente/gi) || []),
-      ...(bodyText.match(/anterior/gi) || []),
-      ...(bodyText.match(/\d+\s*de\s*\d+/g) || []),
-    ].slice(0, 20)
-
-    // Count table rows
-    let tableRows = 0
-    $('table tr').each(() => { tableRows++ })
+    let teamSocios = null
+    if (teamUrl) teamSocios = await fetchAllTeamSocios(cookies)
 
     return res.status(200).json({
-      source, teamUrl,
-      tableRows,
-      paginationMatches,
-      links: links.slice(0, 60),  // First 60 links
-      forms,
-      htmlSnippet: html.slice(html.indexOf('<table'), html.indexOf('<table') + 500),
+      teamUrl,
+      teamSociosCount: teamSocios?.length ?? null,
+      hasTeam: !!teamSocios?.length,
     })
   } catch (err) {
     return res.status(500).json({ error: err.message })

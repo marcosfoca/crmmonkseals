@@ -1,6 +1,6 @@
 import { db } from './_lib/db.js'
 import { authMiddleware } from './_lib/jwt.js'
-import { loginTopF2F, fetchIndivHtml, discoverTeamUrl, fetchTeamHtml, parseProductionTable } from './_lib/topf2f.js'
+import { loginTopF2F, fetchIndivHtml, discoverTeamUrl, fetchAllTeamSocios, parseProductionTable } from './_lib/topf2f.js'
 
 async function getVisibleUserIds(supabase, userId, role) {
   if (role === 99) return null
@@ -22,19 +22,22 @@ async function getVisibleUserIds(supabase, userId, role) {
   return [...visible]
 }
 
-// Fetch + parse one topf2f account's production page
+// Fetch + parse one topf2f account's production — all pages
 async function syncAccount(topf2f_user, topf2f_pass_b64) {
   const pass    = Buffer.from(topf2f_pass_b64, 'base64').toString('utf8')
   const cookies = await loginTopF2F(topf2f_user, pass)
   const indivHtml = await fetchIndivHtml(cookies)
   const teamUrl   = discoverTeamUrl(indivHtml)
-  let html = indivHtml, hasTeam = false
+
+  // Prefer team production (all-pages) over individual page
   if (teamUrl) {
-    const teamHtml = await fetchTeamHtml(cookies, teamUrl)
-    if (teamHtml) { html = teamHtml; hasTeam = true }
+    const teamSocios = await fetchAllTeamSocios(cookies)
+    if (teamSocios?.length) return { socios: teamSocios, hasTeam: true }
   }
-  const { socios } = parseProductionTable(html)
-  return { socios, hasTeam }
+
+  // Fallback: individual production page (single page, no pagination needed)
+  const { socios } = parseProductionTable(indivHtml)
+  return { socios, hasTeam: false }
 }
 
 export default async function handler(req, res) {

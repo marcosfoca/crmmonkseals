@@ -1,6 +1,6 @@
 import { db } from './_lib/db.js'
 import { authMiddleware } from './_lib/jwt.js'
-import { loginTopF2F, fetchTeamMonthHtml, parseProductionTable } from './_lib/topf2f.js'
+import { loginTopF2F, fetchAllTeamSocios } from './_lib/topf2f.js'
 
 export const config = { maxDuration: 120 }
 
@@ -39,10 +39,15 @@ export default async function handler(req, res) {
 
     console.log(`[backfill-dob] Fetching ${months.length} months in parallel`)
 
-    // Fetch all months in parallel
-    const htmlResults = await Promise.allSettled(
-      months.map(({ y, m }) => fetchTeamMonthHtml(cookies, y, m))
-    )
+    // Fetch all months in parallel — each call now pages through all 30-per-page results
+    const pad = n => String(n).padStart(2, '0')
+    const monthFetches = months.map(({ y, m }) => {
+      const ini = `${y}-${pad(m)}-01`
+      const lastDay = new Date(y, m, 0).getDate()
+      const fin = `${y}-${pad(m)}-${lastDay}`
+      return fetchAllTeamSocios(cookies, ini, fin)
+    })
+    const sociosResults = await Promise.allSettled(monthFetches)
 
     // Collect num_formulario → { fecha_nacimiento, sexo, nif }
     const dobMap = {}
@@ -51,12 +56,12 @@ export default async function handler(req, res) {
     for (let i = 0; i < months.length; i++) {
       const { y, m } = months[i]
       const label = `${y}-${String(m).padStart(2, '0')}`
-      const r = htmlResults[i]
+      const r = sociosResults[i]
       if (r.status === 'rejected' || !r.value) {
         monthResults.push({ month: label, socios: 0, withDob: 0, error: r.reason?.message || 'null' })
         continue
       }
-      const { socios } = parseProductionTable(r.value)
+      const socios = r.value
       let withDob = 0
       for (const s of socios) {
         if (!dobMap[s.num_formulario]) {
