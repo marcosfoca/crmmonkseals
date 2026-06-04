@@ -23,7 +23,7 @@ export async function fetchAllTeamSocios(cookies, ini = '2000-01-01', fin = '203
   const isLoggedOut = h => h.includes('login.php') || h.includes('usuarios/login')
   const body = new URLSearchParams({
     fechainicio: ini, fechafin: fin,
-    filtrofecha: '0', estadobo: '0', equipo: '0',
+    filtrofecha: '1', estadobo: '0', equipo: '0',
     SI_A: 'Si, esta es la consulta que quiero hacer.'
   }).toString()
 
