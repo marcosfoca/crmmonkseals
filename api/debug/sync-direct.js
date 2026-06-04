@@ -26,10 +26,23 @@ export default async function handler(req, res) {
 
     let socios = await fetchAllTeamSocios(cookies, '2025-01-01', '2026-12-31', teamUrl)
     if (!socios?.length) {
-      const { socios: fallback } = parseProductionTable(indivHtml)
-      socios = fallback
+      const { socios: fb } = parseProductionTable(indivHtml)
+      socios = fb
     }
     if (!socios?.length) return res.status(200).json({ ok: true, synced: 0, teamUrl })
+
+    // Deduplicate by num_formulario (last occurrence wins, non-null fields win)
+    const sociosMap = {}
+    for (const s of socios) {
+      const prev = sociosMap[s.num_formulario]
+      sociosMap[s.num_formulario] = prev ? {
+        ...prev, ...s,
+        fecha_nacimiento: s.fecha_nacimiento || prev.fecha_nacimiento || null,
+        sexo: s.sexo || prev.sexo || null,
+        nif:  s.nif  || prev.nif  || null,
+      } : s
+    }
+    socios = Object.values(sociosMap)
 
     // Captador name → CRM user ID map
     const { data: captUsers } = await supabase
