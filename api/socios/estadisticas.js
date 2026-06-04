@@ -3,8 +3,12 @@ import { authMiddleware } from '../_lib/jwt.js'
 import { getDay, getWeek, getYear } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-async function getVisibleUserIds(supabase, userId, role, es_raiz) {
-  if (role === 99 || es_raiz) return null
+async function getVisibleUserIds(supabase, userId, role) {
+  if (role === 99) return null
+  try {
+    const { data: self } = await supabase.from('users').select('es_raiz').eq('id', userId).single()
+    if (self?.es_raiz) return null
+  } catch {}
   const { data: rows } = await supabase.from('users').select('id, parent_id')
   const visible = new Set([userId])
   let changed = true
@@ -63,7 +67,7 @@ export default async function handler(req, res) {
 
   try {
     const supabase = db()
-    const visibleIds = await getVisibleUserIds(supabase, claim.id, claim.role, claim.es_raiz)
+    const visibleIds = await getVisibleUserIds(supabase, claim.id, claim.role)
 
     let q = supabase.from('socios').select('estado,llamada,cuota,fecha_alta,fecha_nacimiento,sexo,nif,ong')
     if (visibleIds) q = q.in('captador_id', visibleIds)
