@@ -17,29 +17,41 @@ function parseTotalFromHtml(html) {
   return m ? parseInt(m[1]) : 0
 }
 
+// Fetch a single URL with up to `retries` retries on failure.
+async function fetchTextWithRetry(url, options, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const r = await fetch(url, options)
+      if (!r.ok) {
+        if (attempt < retries) continue
+        return null
+      }
+      return await r.text()
+    } catch {
+      if (attempt >= retries) return null
+    }
+  }
+  return null
+}
+
 // Fetch ALL pages of team production and return combined socios array.
 // teamUrl: the discovered link (may include ?equipo=X for scoped accounts).
 // ini/fin default to all-time range.
 export async function fetchAllTeamSocios(cookies, ini = '2024-01-01', fin = '2026-12-31', teamUrl = TEAM_URL) {
   const isLoggedOut = h => h.includes('login.php') || h.includes('usuarios/login')
-  const body = new URLSearchParams({
-    fechainicio: ini, fechafin: fin,
-    filtrofecha: '0', estadobo: '0', equipo: '0',
-    SI_A: 'Si, esta es la consulta que quiero hacer.'
-  }).toString()
+  const postOpts = {
+    method: 'POST',
+    headers: { ...commonHeaders(cookies), 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      fechainicio: ini, fechafin: fin,
+      filtrofecha: '0', estadobo: '0', equipo: '0',
+      SI_A: 'Si, esta es la consulta que quiero hacer.'
+    }).toString()
+  }
 
-  // Page 1 via POST to the discovered teamUrl
-  let firstHtml
-  try {
-    const r = await fetch(teamUrl, {
-      method: 'POST',
-      headers: { ...commonHeaders(cookies), 'Content-Type': 'application/x-www-form-urlencoded' },
-      body
-    })
-    if (!r.ok) return null
-    firstHtml = await r.text()
-    if (isLoggedOut(firstHtml)) return null
-  } catch { return null }
+  // Page 1 via POST — retry up to 2 times
+  const firstHtml = await fetchTextWithRetry(teamUrl, postOpts, 2)
+  if (!firstHtml || isLoggedOut(firstHtml)) return null
 
   const { socios: page1 } = parseProductionTable(firstHtml)
   const total = parseTotalFromHtml(firstHtml)
@@ -47,27 +59,44 @@ export async function fetchAllTeamSocios(cookies, ini = '2024-01-01', fin = '202
   if (total <= 30) return page1
 
   const totalPages = Math.ceil(total / 30)
-  console.log(`[topf2f] fetching ${totalPages} pages (${total} socios)`)
+  console.log(`[topf2f] fetching pages 2-${totalPages} (${total} socios expected)`)
 
-  // Pages 2..N via GET — preserve any ?equipo=X already in teamUrl
+  // Pages 2..N via GET with retry — preserve any ?equipo=X already in teamUrl
   const sep = teamUrl.includes('?') ? '&' : '?'
-  const pageResults = await Promise.allSettled(
-    Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(p =>
-      fetch(`${teamUrl}${sep}page=${p}&ini=${ini}&fin=${fin}`, { headers: commonHeaders(cookies) })
-        .then(r => r.ok ? r.text() : null)
-        .catch(() => null)
+  const pageNums = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+
+  const pageHtmls = await Promise.all(
+    pageNums.map(p =>
+      fetchTextWithRetry(
+        `${teamUrl}${sep}page=${p}&ini=${ini}&fin=${fin}`,
+        { headers: commonHeaders(cookies) },
+        2  // up to 2 retries per page
+      )
     )
   )
 
   const all = [...page1]
-  for (const r of pageResults) {
-    const html = r.status === 'fulfilled' ? r.value : null
-    if (html && !isLoggedOut(html)) {
-      const { socios } = parseProductionTable(html)
-      all.push(...socios)
+  let failedPages = 0
+  for (let i = 0; i < pageHtmls.length; i++) {
+    const html = pageHtmls[i]
+    const pageNum = pageNums[i]
+    if (!html || isLoggedOut(html)) {
+      console.warn(`[topf2f] page ${pageNum} failed after retries`)
+      failedPages++
+      continue
     }
+    const { socios } = parseProductionTable(html)
+    if (socios.length === 0) {
+      console.warn(`[topf2f] page ${pageNum} returned 0 socios (parse issue?)`)
+    }
+    all.push(...socios)
   }
-  console.log(`[topf2f] total fetched: ${all.length} socios`)
+
+  if (failedPages > 0) {
+    console.error(`[topf2f] ${failedPages} pages FAILED — fetched ${all.length}/${total} socios`)
+  } else {
+    console.log(`[topf2f] all pages OK — total fetched: ${all.length} socios`)
+  }
   return all
 }
 

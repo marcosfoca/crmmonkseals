@@ -86,14 +86,14 @@ export default async function handler(req, res) {
       .from('users').select('id, nombre, apellidos, topf2f_captador_nombre')
     const captadorMap = {}
 
-    // Tier 1 (lowest): auto-match by CRM nombre+apellidos
+    // Tier 1 (lowest): auto-match by CRM nombre+apellidos (full name only — first-name-only is too risky)
     for (const u of allUsers || []) {
       if (!u.nombre) continue
       const fullName = `${u.nombre} ${u.apellidos || ''}`.toLowerCase().trim()
-      const firstName = u.nombre.toLowerCase().trim()
-      // Only add if not already mapped (topf2f_captador_nombre takes priority below)
       if (fullName && !captadorMap[fullName]) captadorMap[fullName] = u.id
-      if (firstName && !captadorMap[firstName]) captadorMap[firstName] = u.id
+      // Also try nombre-only as fallback (lower risk than first-name-only)
+      const nombreOnly = u.nombre.toLowerCase().trim()
+      if (nombreOnly && !captadorMap[nombreOnly]) captadorMap[nombreOnly] = u.id
     }
 
     // Tier 2: explicit topf2f_captador_nombre (overrides auto-match)
@@ -109,8 +109,11 @@ export default async function handler(req, res) {
         const key = r.value.ownerCaptadorNombre.toLowerCase().trim()
         captadorMap[key] = accounts[i].id  // root user is the owner
         console.log(`[sync] owner name auto-discovered: "${r.value.ownerCaptadorNombre}" → account ${accounts[i].topf2f_user}`)
+      } else if (r.status !== 'rejected') {
+        console.warn(`[sync] could not auto-discover owner name for account ${accounts[i].topf2f_user} (indivPage returned 0 socios?)`)
       }
     }
+    console.log(`[sync] captadorMap has ${Object.keys(captadorMap).length} entries`)
     // ───────────────────────────────────────────────────────────────────────
 
     // Merge socios across all accounts
@@ -199,12 +202,24 @@ export default async function handler(req, res) {
     const newlyLinked = records.filter(r => r.captador_id && !existingMap[r.num_formulario]?.captador_id).length
     if (newlyLinked > 0) debugParts.push(`${newlyLinked} enlazados`)
 
-    // Log attribution breakdown for verification
+    // Log attribution breakdown + unmatched captador names for diagnosis
     const byOwner = {}
-    for (const r of records) {
+    const unmatchedNames = {}
+    for (let i = 0; i < records.length; i++) {
+      const r = records[i]
       byOwner[r.captador_id] = (byOwner[r.captador_id] || 0) + 1
+      const rawName = socios[i]?.captador_nombre
+      if (rawName && !captadorMap[rawName.toLowerCase().trim()]) {
+        unmatchedNames[rawName] = (unmatchedNames[rawName] || 0) + 1
+      }
     }
-    console.log('[sync] attribution breakdown:', JSON.stringify(byOwner))
+    console.log('[sync] attribution breakdown (captador_id → count):', JSON.stringify(byOwner))
+    const unmatchedList = Object.entries(unmatchedNames).sort((a,b) => b[1]-a[1]).slice(0,20)
+    if (unmatchedList.length > 0) {
+      console.warn('[sync] unmatched captador names (fell to account_owner):', JSON.stringify(unmatchedList))
+    } else {
+      console.log('[sync] all captador names matched — no fallback to account_owner')
+    }
 
     return res.status(200).json({
       ok: true, new: newCount, updated: updatedCount, total: socios.length,
