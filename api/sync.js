@@ -22,23 +22,28 @@ async function getVisibleUserIds(supabase, userId, role) {
   return [...visible]
 }
 
-// Fetch + parse one topf2f account's production — all pages
+// Fetch + parse one topf2f account's production — all pages.
+// Also extracts the account owner's own captador_nombre from the individual page.
 async function syncAccount(topf2f_user, topf2f_pass_b64) {
   const pass    = Buffer.from(topf2f_pass_b64, 'base64').toString('utf8')
   const cookies = await loginTopF2F(topf2f_user, pass)
   const indivHtml = await fetchIndivHtml(cookies)
   const teamUrl   = discoverTeamUrl(indivHtml)
 
+  // Extract the account owner's own captador_nombre from their individual page.
+  // On the individual page, every row belongs to the owner, so the first row's
+  // captador_nombre is the owner's name as it appears in topf2f.
+  const { socios: indivSocios } = parseProductionTable(indivHtml)
+  const ownerCaptadorNombre = indivSocios[0]?.captador_nombre || null
+
   // Prefer team production (all-pages) over individual page.
-  // Pass the discovered teamUrl — it may contain ?equipo=X needed for scoped accounts.
   if (teamUrl) {
     const teamSocios = await fetchAllTeamSocios(cookies, '2024-01-01', '2026-12-31', teamUrl)
-    if (teamSocios?.length) return { socios: teamSocios, hasTeam: true }
+    if (teamSocios?.length) return { socios: teamSocios, hasTeam: true, ownerCaptadorNombre }
   }
 
-  // Fallback: individual production page (single page, no pagination needed)
-  const { socios } = parseProductionTable(indivHtml)
-  return { socios, hasTeam: false }
+  // Fallback: individual production page
+  return { socios: indivSocios, hasTeam: false, ownerCaptadorNombre }
 }
 
 export const config = { maxDuration: 120 }
@@ -55,16 +60,11 @@ export default async function handler(req, res) {
   try {
     const visibleIds = await getVisibleUserIds(supabase, claim.id, claim.role)
 
-    // Collect topf2f accounts to sync:
-    // - Non-root users: only accounts in their visible subtree
-    // - Admin (role=99) or es_raiz: ALL accounts with credentials — each root user
-    //   owns a separate topf2f team that must be fetched independently
     let credQuery = supabase.from('users')
       .select('id, topf2f_user, topf2f_pass')
       .not('topf2f_user', 'is', null)
       .not('topf2f_pass', 'is', null)
     if (visibleIds) credQuery = credQuery.in('id', visibleIds)
-    // else (admin/es_raiz): no filter → sync all accounts
 
     const { data: accounts } = await credQuery
     if (!accounts?.length) return res.status(400).json({ error: 'No tienes credenciales de topf2f configuradas.' })
@@ -76,14 +76,50 @@ export default async function handler(req, res) {
       accounts.map(a => syncAccount(a.topf2f_user, a.topf2f_pass))
     )
 
-    // Merge socios across all accounts (non-null values win)
-    // _account_owner_id tracks the CRM user ID of the topf2f account that contributed each socio
+    // ── Build captadorMap ──────────────────────────────────────────────────
+    // Priority (highest wins): topf2f_captador_nombre > ownerCaptadorNombre > nombre+apellidos
+    //
+    // All CRM users with a name are candidates for auto-matching.
+    // Root users (topf2f_user set) don't have topf2f_captador_nombre, so we
+    // auto-discover their topf2f name from the individual production page.
+    const { data: allUsers } = await supabase
+      .from('users').select('id, nombre, apellidos, topf2f_captador_nombre')
+    const captadorMap = {}
+
+    // Tier 1 (lowest): auto-match by CRM nombre+apellidos
+    for (const u of allUsers || []) {
+      if (!u.nombre) continue
+      const fullName = `${u.nombre} ${u.apellidos || ''}`.toLowerCase().trim()
+      const firstName = u.nombre.toLowerCase().trim()
+      // Only add if not already mapped (topf2f_captador_nombre takes priority below)
+      if (fullName && !captadorMap[fullName]) captadorMap[fullName] = u.id
+      if (firstName && !captadorMap[firstName]) captadorMap[firstName] = u.id
+    }
+
+    // Tier 2: explicit topf2f_captador_nombre (overrides auto-match)
+    for (const u of allUsers || []) {
+      if (u.topf2f_captador_nombre)
+        captadorMap[u.topf2f_captador_nombre.toLowerCase().trim()] = u.id
+    }
+
+    // Tier 3 (highest): auto-discovered owner names from individual pages
+    for (let i = 0; i < accounts.length; i++) {
+      const r = results[i]
+      if (r.status !== 'rejected' && r.value?.ownerCaptadorNombre) {
+        const key = r.value.ownerCaptadorNombre.toLowerCase().trim()
+        captadorMap[key] = accounts[i].id  // root user is the owner
+        console.log(`[sync] owner name auto-discovered: "${r.value.ownerCaptadorNombre}" → account ${accounts[i].topf2f_user}`)
+      }
+    }
+    // ───────────────────────────────────────────────────────────────────────
+
+    // Merge socios across all accounts
     const sociosMap = {}
     let anyTeam = false
     const accountCounts = []
     for (let i = 0; i < accounts.length; i++) {
       const r = results[i]
-      const accountOwnerId = accounts[i].id  // CRM user who owns this topf2f account
+      const accountOwnerId = accounts[i].id
       const user = accounts[i].topf2f_user
       if (r.status === 'rejected') {
         console.warn('[sync] account failed:', r.reason?.message)
@@ -99,7 +135,7 @@ export default async function handler(req, res) {
           fecha_nacimiento: s.fecha_nacimiento || prev.fecha_nacimiento || null,
           sexo: s.sexo || prev.sexo || null,
           nif:  s.nif  || prev.nif  || null,
-          _account_owner_id: prev._account_owner_id,  // keep first account's owner
+          _account_owner_id: prev._account_owner_id,
         } : { ...s, _account_owner_id: accountOwnerId }
       }
     }
@@ -111,15 +147,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, new: 0, updated: 0, total: 0, debug: 'Sin socios en producción.' })
     }
 
-    // Captador name → CRM user ID map
-    const { data: captUsers } = await supabase
-      .from('users').select('id, topf2f_captador_nombre').not('topf2f_captador_nombre', 'is', null)
-    const captadorMap = {}
-    for (const u of captUsers || [])
-      if (u.topf2f_captador_nombre)
-        captadorMap[u.topf2f_captador_nombre.toLowerCase().trim()] = u.id
-
-    // Fetch existing DB records for these socios
+    // Fetch existing DB records
     const nums = socios.map(s => s.num_formulario)
     const { data: existingRows } = await supabase
       .from('socios').select('num_formulario, fecha_nacimiento, sexo, captador_id, nif').in('num_formulario', nums)
@@ -130,16 +158,14 @@ export default async function handler(req, res) {
     // Build upsert records
     const records = socios.map(s => {
       const ex = existingMap[s.num_formulario]
+
       // Attribution priority:
-      // 1. captador_nombre matched to a CRM user via topf2f_captador_nombre
-      // 2. The CRM user who owns the topf2f account (ensures correct ownership on re-sync)
-      // 3. Previously stored captador_id (fallback for manually assigned captadores)
-      // 4. claim.id (last resort)
-      const captadorId =
-        (s.captador_nombre && captadorMap[s.captador_nombre.toLowerCase().trim()]) ||
-        s._account_owner_id ||
-        ex?.captador_id ||
-        claim.id
+      // 1. captador_nombre matched to a CRM user (via topf2f_captador_nombre, owner auto-discovery, or nombre)
+      // 2. Previously stored captador_id (preserves any manual assignment and avoids wrong re-attribution)
+      // 3. The CRM user who owns the topf2f account (last resort for brand-new unmatched socios)
+      const matchedByName = s.captador_nombre && captadorMap[s.captador_nombre.toLowerCase().trim()]
+      const captadorId = matchedByName || ex?.captador_id || s._account_owner_id
+
       const { captador_nombre, _account_owner_id, ...rest } = s
       return {
         ...rest,
@@ -154,7 +180,7 @@ export default async function handler(req, res) {
     const newCount     = records.filter(r => !existingNums.has(r.num_formulario)).length
     const updatedCount = records.length - newCount
 
-    // Upsert in chunks of 200 to avoid Supabase payload limits
+    // Upsert in chunks of 200
     const CHUNK = 200
     for (let ci = 0; ci < records.length; ci += CHUNK) {
       const chunk = records.slice(ci, ci + CHUNK)
@@ -171,6 +197,13 @@ export default async function handler(req, res) {
     debugParts.push(accountCounts.join(', '))
     const newlyLinked = records.filter(r => r.captador_id && !existingMap[r.num_formulario]?.captador_id).length
     if (newlyLinked > 0) debugParts.push(`${newlyLinked} enlazados`)
+
+    // Log attribution breakdown for verification
+    const byOwner = {}
+    for (const r of records) {
+      byOwner[r.captador_id] = (byOwner[r.captador_id] || 0) + 1
+    }
+    console.log('[sync] attribution breakdown:', JSON.stringify(byOwner))
 
     return res.status(200).json({
       ok: true, new: newCount, updated: updatedCount, total: socios.length,
