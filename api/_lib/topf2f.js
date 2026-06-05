@@ -169,7 +169,9 @@ function buildColMap(texts) {
     if (v.startsWith('otra'))                                  col.otraFecha       = i
     // Exact "estado" avoids matching "Estado llamada"
     if (v === 'estado')                                        col.estado          = i
-    if (v.includes('nif') || v === 'dni' || v.includes('dni/') || (v.includes('doc') && !v.includes('donante')))
+    // Exclude captador/comercial/agente columns so "NIF Captador" doesn't overwrite the socio's own NIF
+    const isCaptadorCol = v.includes('captador') || v.includes('comercial') || v.includes('agente') || v.includes('promotor')
+    if (!isCaptadorCol && (v.includes('nif') || v === 'dni' || v.includes('dni/') || (v.includes('doc') && !v.includes('donante'))))
                                                                col.nif             = i
     if (v.includes('nac') || (v.includes('fecha') && v.includes('nac')))
                                                                col.fechaNacimiento = i
@@ -183,8 +185,9 @@ function buildColMap(texts) {
     }
   })
 
-  // Prefer name column over NIF column for captador matching
-  col.captador = captadorNombreIdx !== undefined ? captadorNombreIdx : captadorNifIdx
+  // Only use the name column for captador — never fall back to the NIF/document column,
+  // as that would flood the captadores dropdown with document numbers instead of names.
+  col.captador = captadorNombreIdx
 
   // Comentarios: first two columns with "coment"
   const cIdx = t.map((v, i) => v.includes('coment') ? i : -1).filter(x => x >= 0)
