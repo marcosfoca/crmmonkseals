@@ -86,14 +86,20 @@ export default async function handler(req, res) {
       .from('users').select('id, nombre, apellidos, topf2f_captador_nombre')
     const captadorMap = {}
 
-    // Tier 1 (lowest): auto-match by CRM nombre+apellidos (full name only — first-name-only is too risky)
+    // Tier 1 (lowest): auto-match by CRM nombre+apellidos in multiple formats.
+    // topf2f may show "Biel Mora" while CRM stores nombre="Biel" apellidos="Mora Pons",
+    // so we generate: full ("biel mora pons"), nombre+primer-apellido ("biel mora"),
+    // and nombre-only ("biel") — each only if not already taken by a more specific match.
     for (const u of allUsers || []) {
       if (!u.nombre) continue
-      const fullName = `${u.nombre} ${u.apellidos || ''}`.toLowerCase().trim()
+      const nombre = u.nombre.toLowerCase().trim()
+      const apellidoParts = (u.apellidos || '').toLowerCase().trim().split(/\s+/).filter(Boolean)
+      const fullName = apellidoParts.length ? `${nombre} ${apellidoParts.join(' ')}` : nombre
+      const nombreApellido1 = apellidoParts.length ? `${nombre} ${apellidoParts[0]}` : null
+
       if (fullName && !captadorMap[fullName]) captadorMap[fullName] = u.id
-      // Also try nombre-only as fallback (lower risk than first-name-only)
-      const nombreOnly = u.nombre.toLowerCase().trim()
-      if (nombreOnly && !captadorMap[nombreOnly]) captadorMap[nombreOnly] = u.id
+      if (nombreApellido1 && nombreApellido1 !== fullName && !captadorMap[nombreApellido1]) captadorMap[nombreApellido1] = u.id
+      if (nombre && !captadorMap[nombre]) captadorMap[nombre] = u.id
     }
 
     // Tier 2: explicit topf2f_captador_nombre (overrides auto-match)
