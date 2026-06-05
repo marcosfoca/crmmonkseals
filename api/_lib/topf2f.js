@@ -250,7 +250,7 @@ export function parseProductionTable(html) {
     // Detect hidden phone column: a 9-digit number where the header says "intentos"
     if (!phoneColDetected && colMap.intentos !== undefined) {
       const maybePhone = cell($, cells, colMap.intentos + colOffset)
-      if (/^\d{9}$/.test(maybePhone.replace(/\s/g, ''))) {
+      if (/^\d{9,12}$/.test(maybePhone.replace(/\s/g, ''))) {
         phoneColIdx = colMap.intentos + colOffset
       }
       phoneColDetected = true
@@ -279,7 +279,7 @@ export function parseProductionTable(html) {
     const llamada        = c(colMap.llamada).toLowerCase() === 'si'
     const tipoSocio      = c(colMap.tipoSocio) || null
     const pdfContrato    = c(colMap.pdf).toLowerCase() === 'si'
-    const intentos       = parseInt(c(colMap.intentos)) || 0
+    const intentos       = Math.min(parseInt(c(colMap.intentos)) || 0, 9999)
     const cuota          = parseFloat(c(colMap.cuota).replace(',', '.')) || null
     const periodicidad   = c(colMap.periodicidad) || null
     const fFirma         = parseDate(c(colMap.fFirma))
