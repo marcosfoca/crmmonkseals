@@ -161,10 +161,11 @@ export default async function handler(req, res) {
 
       // Attribution priority:
       // 1. captador_nombre matched to a CRM user (via topf2f_captador_nombre, owner auto-discovery, or nombre)
-      // 2. Previously stored captador_id (preserves any manual assignment and avoids wrong re-attribution)
-      // 3. The CRM user who owns the topf2f account (last resort for brand-new unmatched socios)
+      // 2. The CRM user who owns the topf2f account (ensures only truly unmatched socios fall here)
+      // NOTE: we intentionally do NOT fall back to ex?.captador_id — previous syncs may have set wrong
+      // attributions (all falling to account_owner) and we need each sync to re-attribute cleanly.
       const matchedByName = s.captador_nombre && captadorMap[s.captador_nombre.toLowerCase().trim()]
-      const captadorId = matchedByName || ex?.captador_id || s._account_owner_id
+      const captadorId = matchedByName || s._account_owner_id
 
       const { captador_nombre, _account_owner_id, ...rest } = s
       return {
