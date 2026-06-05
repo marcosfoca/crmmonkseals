@@ -20,7 +20,7 @@ function parseTotalFromHtml(html) {
 // Fetch ALL pages of team production and return combined socios array.
 // teamUrl: the discovered link (may include ?equipo=X for scoped accounts).
 // ini/fin default to all-time range.
-export async function fetchAllTeamSocios(cookies, ini = '2025-01-01', fin = '2026-12-31', teamUrl = TEAM_URL) {
+export async function fetchAllTeamSocios(cookies, ini = '2024-01-01', fin = '2026-12-31', teamUrl = TEAM_URL) {
   const isLoggedOut = h => h.includes('login.php') || h.includes('usuarios/login')
   const body = new URLSearchParams({
     fechainicio: ini, fechafin: fin,
