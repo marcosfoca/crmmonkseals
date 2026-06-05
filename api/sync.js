@@ -77,11 +77,13 @@ export default async function handler(req, res) {
     )
 
     // Merge socios across all accounts (non-null values win)
+    // _account_owner_id tracks the CRM user ID of the topf2f account that contributed each socio
     const sociosMap = {}
     let anyTeam = false
     const accountCounts = []
     for (let i = 0; i < accounts.length; i++) {
       const r = results[i]
+      const accountOwnerId = accounts[i].id  // CRM user who owns this topf2f account
       const user = accounts[i].topf2f_user
       if (r.status === 'rejected') {
         console.warn('[sync] account failed:', r.reason?.message)
@@ -97,7 +99,8 @@ export default async function handler(req, res) {
           fecha_nacimiento: s.fecha_nacimiento || prev.fecha_nacimiento || null,
           sexo: s.sexo || prev.sexo || null,
           nif:  s.nif  || prev.nif  || null,
-        } : s
+          _account_owner_id: prev._account_owner_id,  // keep first account's owner
+        } : { ...s, _account_owner_id: accountOwnerId }
       }
     }
 
@@ -127,11 +130,17 @@ export default async function handler(req, res) {
     // Build upsert records
     const records = socios.map(s => {
       const ex = existingMap[s.num_formulario]
+      // Attribution priority:
+      // 1. captador_nombre matched to a CRM user via topf2f_captador_nombre
+      // 2. The CRM user who owns the topf2f account (ensures correct ownership on re-sync)
+      // 3. Previously stored captador_id (fallback for manually assigned captadores)
+      // 4. claim.id (last resort)
       const captadorId =
         (s.captador_nombre && captadorMap[s.captador_nombre.toLowerCase().trim()]) ||
+        s._account_owner_id ||
         ex?.captador_id ||
         claim.id
-      const { captador_nombre, ...rest } = s
+      const { captador_nombre, _account_owner_id, ...rest } = s
       return {
         ...rest,
         captador_id: captadorId,
