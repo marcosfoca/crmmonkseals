@@ -154,9 +154,17 @@ export default async function handler(req, res) {
     const newCount     = records.filter(r => !existingNums.has(r.num_formulario)).length
     const updatedCount = records.length - newCount
 
-    const { error: upsertErr } = await supabase
-      .from('socios').upsert(records, { onConflict: 'num_formulario' })
-    if (upsertErr) throw new Error('Upsert error: ' + upsertErr.message)
+    // Upsert in chunks of 200 to avoid Supabase payload limits
+    const CHUNK = 200
+    for (let ci = 0; ci < records.length; ci += CHUNK) {
+      const chunk = records.slice(ci, ci + CHUNK)
+      const { error: upsertErr } = await supabase
+        .from('socios').upsert(chunk, { onConflict: 'num_formulario' })
+      if (upsertErr) {
+        console.error(`[sync] upsert chunk ${ci}-${ci + chunk.length} error:`, upsertErr.message)
+        throw new Error('Upsert error: ' + upsertErr.message)
+      }
+    }
 
     const debugParts = []
     if (anyTeam) debugParts.push('equipo')
@@ -170,6 +178,7 @@ export default async function handler(req, res) {
     })
 
   } catch (err) {
+    console.error('[sync] fatal error:', err.message)
     return res.status(500).json({ error: err.message })
   }
 }
